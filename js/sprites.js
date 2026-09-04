@@ -131,8 +131,8 @@ WL.sprites = (function () {
     const bob = (pose === 'idle') ? Math.sin(t * 4) * 1.2 : (pose === 'walk' ? Math.abs(Math.sin(t * 10)) * -2 : 0);
     let lean = 0; // torso lean forward (px at shoulders)
     let crouch = 0;
-    const bodyW = thin ? 30 : 44;   // torso width
-    const bellyR = thin ? 10 : 20;
+    const bodyW = thin ? 26 : 44;   // torso width
+    const bellyR = thin ? 2 : 20;
     const hipY = -34;
     const shoulderY = -70;
     const headY = -92;

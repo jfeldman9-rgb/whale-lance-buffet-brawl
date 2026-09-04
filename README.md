@@ -25,7 +25,7 @@ Then open <http://localhost:8000>.
 | --- | --- | --- |
 | Move | Arrow keys / WASD | Virtual stick (left half of screen) |
 | Attack (3-hit tool combo: screwdriver jab → wrench smash → pipe-wrench sweep) | `J` or `Z` | **ATK** |
-| Duct-tape grab | Walk into an enemy + Attack. Attack again = knee. Back + Attack or Jump = throw | same |
+| Duct-tape grab | Walk into an enemy. Attack = knee. Back + Attack or Jump = throw | same |
 | Jump / flying boot | `K`, `X` or `Space` (+ Attack in the air) | **JMP** |
 | Refrigerant spray (freezes enemies, costs a little HP) | `L` or `C` | **SPR** |
 | Toolbox throw (pick it back up after) | `I` or `V` | **BOX** |

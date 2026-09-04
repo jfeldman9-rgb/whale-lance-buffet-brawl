@@ -31,7 +31,7 @@
       this.invuln = 0; this.flash = 0;
       this.attack = null; this.hitDone = false; this.comboTimer = 0; this.nextCombo = 'jab';
       this.grab = null; this.grabHits = 0; this.grabT = 0;
-      this.specialCd = 0;
+      this.specialCd = 0; this.grabCd = 0;
       this.hits = 0; this.comboCount = 0; this.comboDisplayT = 0;
       this.speed = 135;
       this.dead = false;
@@ -48,6 +48,7 @@
       if (this.invuln > 0) this.invuln -= dt;
       if (this.flash > 0) this.flash -= dt;
       if (this.specialCd > 0) this.specialCd -= dt;
+      if (this.grabCd > 0) this.grabCd -= dt;
       if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.nextCombo = 'jab'; }
       if (this.comboDisplayT > 0) { this.comboDisplayT -= dt; if (this.comboDisplayT <= 0) this.comboCount = 0; }
       const ax = inp.axis();
@@ -73,11 +74,11 @@
           this.setState(ax.x || ax.y ? 'walk' : 'idle');
           if (this.state === 'walk' && this.stateT === 0) { /* keep t continuous */ }
           if (pressed.fart && this.fart >= this.fartMax) { this.startFart(); break; }
-          if (pressed.attack) {
-            const target = this.findGrabTarget();
-            if (target) this.startGrab(target);
-            else this.startAttack(this.comboTimer > 0 ? this.nextCombo : 'jab');
-            break;
+          if (pressed.attack) { this.startAttack(this.comboTimer > 0 ? this.nextCombo : 'jab'); break; }
+          // SoR-style: walking into an enemy grabs it
+          if (ax.x !== 0 && this.grabCd <= 0) {
+            const target = this.findGrabTarget(22);
+            if (target) { this.startGrab(target); break; }
           }
           if (pressed.jump) { this.vz = 330; this.z = 0.01; this.setState('jump'); WL.audio.sfx.jump(); break; }
           if (pressed.special && this.specialCd <= 0) { this.startSpray(); break; }
@@ -140,7 +141,7 @@
           this.vx = 0; this.vy = 0;
           this.grabT += dt;
           if (!e || e.dead || e.state !== 'grabbed') { this.grab = null; this.setState('idle'); break; }
-          e.x = this.x + this.facing * 26; e.y = this.y; e.facing = -this.facing;
+          e.x = this.x + this.facing * 30; e.y = this.y; e.facing = -this.facing;
           if (this.grabT > 3.2) { this.releaseGrab(true); break; }
           if (pressed.attack && this.stateT > 0.15) {
             const back = ax.x !== 0 && Math.sign(ax.x) === -this.facing;
@@ -156,7 +157,7 @@
         }
         case 'grabHit': {
           if (this.stateT >= 0.22) this.setState('grab');
-          if (this.grab) { this.grab.x = this.x + this.facing * 26; this.grab.y = this.y; }
+          if (this.grab) { this.grab.x = this.x + this.facing * 30; this.grab.y = this.y; }
           break;
         }
         case 'hurt': {
@@ -240,12 +241,12 @@
     registerHits(n) {
       this.hits += n; this.comboCount += n; this.comboDisplayT = 1.6;
     }
-    findGrabTarget() {
+    findGrabTarget(range) {
       let best = null, bd = 1e9;
       for (const e of this.g.enemies) {
-        if (!e.grabbable) continue;
+        if (!e.grabbable || e.state === 'windup') continue;
         const dx = (e.x - this.x) * this.facing, dy = Math.abs(e.y - this.y);
-        if (dx > 0 && dx < 34 && dy < 18 && dx < bd) { best = e; bd = dx; }
+        if (dx > 0 && dx < (range || 34) && dy < 14 && dx < bd) { best = e; bd = dx; }
       }
       return best;
     }
@@ -257,12 +258,12 @@
       this.g.fx.text(this.x, this.y - 90, 'DUCT-TAPED!', '#ddd');
     }
     releaseGrab(broken) {
-      const e = this.grab; this.grab = null;
+      const e = this.grab; this.grab = null; this.grabCd = 0.8;
       if (e && e.state === 'grabbed') { e.release(); if (broken) { e.setState('approach'); this.hurt(4, e.x, false); } }
       this.setState('idle');
     }
     throwGrabbed() {
-      const e = this.grab; this.grab = null;
+      const e = this.grab; this.grab = null; this.grabCd = 0.5;
       if (e) { e.thrown(this.facing, this); this.registerHits(1); }
       this.setState('throw'); this.hitDone = true;
       WL.audio.sfx.throwSfx(); this.g.shake(2, 0.1);

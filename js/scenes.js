@@ -84,7 +84,7 @@
         ['HOW TO PLAY', '#ffe14a'],
         ['MOVE      Arrows / WASD / left-side touch stick', '#fff'],
         ['ATTACK    J or Z      3-hit combo: screwdriver > wrench > pipe wrench', '#fff'],
-        ['GRAB      Walk into an enemy and ATTACK = duct-tape grab', '#fff'],
+        ['GRAB      Walk into an enemy = duct-tape grab', '#fff'],
         ['          ATTACK again = knee. Back+ATTACK or JUMP = throw', '#fff'],
         ['JUMP      K / X / Space    ATTACK in air = flying boot', '#fff'],
         ['SPRAY     L or C      Refrigerant spray: freezes enemies (costs a little HP)', '#fff'],
@@ -161,7 +161,7 @@
       // o: {title, lines, tempFrom, tempTo, palette, onDone, pose, thin}
       this.game = game; Object.assign(this, o); this.t = 0; this.chars = 0;
     }
-    enter() {}
+    enter() { A.playMusic(this.music || 'title'); }
     fullText() { return this.lines.join('\n'); }
     update(dt, inp) {
       this.t += dt; this.chars += dt * 40;
@@ -448,6 +448,8 @@
       }
       // puddles
       for (const pu of this.puddles) { ctx.save(); ctx.globalAlpha = Math.min(1, (pu.life - pu.t)); S.drawPuddle(ctx, pu.x - this.camX, pu.y, pu.r, pu.t); ctx.restore(); }
+      // Volcano Fart cloud sits on the floor under the actors so Lance stays visible
+      if (this.fartT >= 0) S.drawFartCloud(ctx, this.fartX - this.camX, this.fartY, this.fartT, p.facing);
       // depth-sorted entities
       const draws = [];
       for (const o of this.objects) draws.push(o);
@@ -455,10 +457,10 @@
       for (const e of this.enemies) draws.push(e);
       draws.push(p);
       for (const pr of this.projectiles) draws.push(pr);
-      draws.sort((a, b) => (a.y + (a.falling ? -1000 : 0)) - (b.y + (b.falling ? -1000 : 0)));
+      const depth = d => d.y + (d.falling ? -1000 : 0) + (d.state === 'grabbed' ? 0.5 : 0);
+      draws.sort((a, b) => depth(a) - depth(b));
       for (const d of draws) d.draw(ctx, this.camX);
       this.fx.draw(ctx, this.camX);
-      if (this.fartT >= 0) S.drawFartCloud(ctx, this.fartX - this.camX, this.fartY, this.fartT, p.facing);
       ctx.restore();
       if (this.flashT > 0) { ctx.save(); ctx.globalAlpha = Math.min(0.8, this.flashT * 2.5); ctx.fillStyle = this.flashColor; ctx.fillRect(0, 0, W, H); ctx.restore(); }
       this.drawHUD(ctx);
@@ -501,7 +503,7 @@
         if (p.comboCount >= 10) T.draw(ctx, 'BUFFET COMBO!', 20, 78, { size: 8, color: '#f9c', stroke: '#000', strokeWidth: 3 });
       }
       // GO arrow
-      if (!this.locked && this.aliveEnemies() === 0 && this.phase === 'play' && this.currentWave() && Math.floor(this.t * 3) % 2 === 0) {
+      if (!this.locked && this.aliveEnemies() === 0 && this.phase === 'play' && (this.currentWave() || !L.boss) && Math.floor(this.t * 3) % 2 === 0) {
         T.draw(ctx, 'GO', W - 70, 110, { size: 16, color: '#ffe14a', stroke: '#000', strokeWidth: 4 });
         ctx.fillStyle = '#ffe14a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(W - 30, 108); ctx.lineTo(W - 10, 118); ctx.lineTo(W - 30, 128); ctx.closePath(); ctx.fill(); ctx.stroke();
       }
@@ -538,7 +540,7 @@
       const items = ['RESUME', A.muted ? 'SOUND: OFF' : 'SOUND: ON', 'QUIT TO TITLE'];
       items.forEach((it, i) => T.draw(ctx, (i === this.pauseSel ? '> ' : '  ') + it, W / 2, 150 + i * 22, { size: 10, align: 'center', color: i === this.pauseSel ? '#ffe14a' : '#ddd' }));
       T.draw(ctx, 'J ATTACK  K JUMP  L SPRAY  I TOOLBOX  F FART', W / 2, 250, { size: 7, align: 'center', color: '#bcd' });
-      T.draw(ctx, 'Walk into an enemy + J = duct-tape grab. Back+J to throw.', W / 2, 264, { size: 6, align: 'center', color: '#bcd' });
+      T.draw(ctx, 'Walk into an enemy = duct-tape grab. J knee, Back+J or K throw.', W / 2, 264, { size: 6, align: 'center', color: '#bcd' });
       T.draw(ctx, `KILLS: ${this.kills}   HITS: ${this.player.hits}`, W / 2, 290, { size: 7, align: 'center', color: '#9ab' });
       if (WL.input.touchEnabled) WL.input.drawTouch(ctx, { buttons: false });
     }
