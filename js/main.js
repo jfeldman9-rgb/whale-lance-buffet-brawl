@@ -103,8 +103,8 @@
     if (WL.input.pressed.mute && !(game.scene && game.scene.paused)) WL.audio.toggleMute();
 
     // scene fade transition
-    if (game.fadeDir === 1) { game.fade = Math.min(1, game.fade + dt * 4); if (game.fade >= 1) { game._swap(); game.fadeDir = -1; } }
-    else if (game.fadeDir === -1) { game.fade = Math.max(0, game.fade - dt * 4); if (game.fade <= 0) game.fadeDir = 0; }
+    if (game.fadeDir === 1) { game.fade = Math.min(1, game.fade + dt * 6); if (game.fade >= 1) { game._swap(); game.fadeDir = -1; } }
+    else if (game.fadeDir === -1) { game.fade = Math.max(0, game.fade - dt * 6); if (game.fade <= 0) game.fadeDir = 0; }
     else if (game.nextScene && !game.scene) { game._swap(); }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);

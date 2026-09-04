@@ -302,7 +302,7 @@
         { kind: 'crate', x: 900, y: 240, contents: ['turkey', 'chip'] },
         { kind: 'cooler', x: 1350, y: 330, contents: ['chili', 'burger'] }
       ],
-      pickups: [{ kind: 'beans', x: 600, y: 330 }, { kind: 'leftovers', x: 1150, y: 220 }],
+      pickups: [{ kind: 'beans', x: 600, y: 330 }, { kind: 'leftovers', x: 1150, y: 220 }, { kind: 'beans', x: 1800, y: 330 }, { kind: 'turkey', x: 1880, y: 230 }, { kind: 'chili', x: 1340, y: 220 }],
       waves: [
         wave(280, [grp(['froyo', 2, { side: 1 }], ['sprout', 2, { side: -1 }])]),
         wave(700, [grp(['kale', 1, { side: 1 }], ['froyo', 1, { side: -1 }], ['carrot', 1, { side: 1 }])]),

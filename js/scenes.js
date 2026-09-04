@@ -124,11 +124,18 @@
       const img = WL.assets.get(p.img);
       const boxH = 74;
       if (img) {
-        // Fill the screen (cover) with a slow Ken-Burns zoom; the caption box overlays the bottom
-        const zoom = 1 + Math.min(this.t, 8) * 0.006;
-        const s = Math.max(W / img.width, (H - boxH * 0.4) / img.height) * zoom;
+        // backdrop: darkened blow-up of the same panel fills the side bars
+        const cs = Math.max(W / img.width, H / img.height) * 1.1;
+        ctx.save(); ctx.globalAlpha = 0.35; ctx.drawImage(img, (W - img.width * cs) / 2, (H - img.height * cs) / 2, img.width * cs, img.height * cs); ctx.restore();
+        ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, H);
+        // the panel itself, fully visible above the caption box, with a slow Ken-Burns zoom
+        const areaH = H - boxH + 2;
+        const zoom = 1 + Math.min(this.t, 8) * 0.005;
+        const s = Math.min(W / img.width, areaH / img.height) * zoom;
         const dw = img.width * s, dh = img.height * s;
-        ctx.drawImage(img, (W - dw) / 2, Math.min(0, (H - boxH * 0.4 - dh) / 2), dw, dh);
+        ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, areaH); ctx.clip();
+        ctx.drawImage(img, (W - dw) / 2, (areaH - dh) / 2, dw, dh);
+        ctx.restore();
       } else {
         // procedural stand-in panel
         const g = ctx.createLinearGradient(0, 0, 0, H - boxH); g.addColorStop(0, '#1b3f8a'); g.addColorStop(1, '#0b1a3a'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H - boxH);
@@ -282,6 +289,9 @@
       if (n === 2) { this.showBanner('PHASE 2', 'SPRINKLE RAIN', 2); this.fx.text(this.boss.x, this.boss.y - 170, 'THE SWIRL ARMOR MELTS!', '#fff', 2); }
       if (n === 3) { this.showBanner('PHASE 3', 'MELTDOWN', 2); A.sfx.bossRoar(); }
       A.sfx.bossRoar(); this.shake(6, 0.4);
+      // the dessert station coughs up some real food between phases
+      this.spawnPickup('burger', this.camX + 120, U.rand(FT + 20, FB - 20), true);
+      this.spawnPickup(n === 2 ? 'chili' : 'beans', this.camX + W - 120, U.rand(FT + 20, FB - 20), true);
     }
     bossDefeated() {
       this.phase = 'bossdead'; this.phaseT = 0; this.player.won = true; this.player.setState('victory');
@@ -342,7 +352,7 @@
       if (this.bannerT > 0) this.bannerT -= dt;
       if (this.tutorialT > 0) this.tutorialT -= dt;
       if (this.flashT > 0) this.flashT -= dt;
-      if (this.fartT >= 0) { this.fartT += dt; if (this.fartT > 1.4) this.fartT = -1; }
+      if (this.fartT >= 0) { this.fartT += dt; if (this.fartT > 1.6) this.fartT = -1; }
       if (this.shakeT > 0) { this.shakeT -= dt; this.shakeX = U.rand(-1, 1) * this.shakeAmt; this.shakeY = U.rand(-1, 1) * this.shakeAmt * 0.6; if (this.shakeT <= 0) this.shakeAmt = 0; } else { this.shakeX = this.shakeY = 0; }
       this.fx.update(dt);
       this.phaseT += dt;

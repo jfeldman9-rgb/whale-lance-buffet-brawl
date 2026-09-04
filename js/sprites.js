@@ -807,7 +807,7 @@ WL.sprites = (function () {
   /* Volcano Fart cloud — expanding green rings + brown puffs + text */
   function drawFartCloud(ctx, x, y, t, facing) {
     ctx.save();
-    const T = Math.min(1, t / 0.9);
+    const T = Math.min(1, t / 1.15);
     const R = 40 + T * 520;
     // rings
     for (let i = 0; i < 4; i++) {

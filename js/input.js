@@ -40,7 +40,7 @@ WL.input = (function () {
       { id: 'special', label: 'SPR', x: W - 178, y: H - 106, r: 22, color: '#3cf' },
       { id: 'tool', label: 'BOX', x: W - 60, y: H - 34, r: 22, color: '#fc3' },
       { id: 'fart', label: 'FART', x: W - 178, y: H - 50, r: 24, color: '#5d3' },
-      { id: 'pause', label: 'II', x: W - 22, y: 20, r: 14, color: '#aaa' }
+      { id: 'pause', label: 'II', x: W / 2 + 96, y: 34, r: 12, color: '#aaa' }
     ];
   }
   layoutButtons();

@@ -170,7 +170,7 @@
         }
         case 'dead': {
           this.vx *= 0.9;
-          if (this.stateT >= 1.6) { this.g.playerDied(); this.setState('gone'); }
+          if (this.stateT >= 1.6) { this.setState('gone'); this.g.playerDied(); /* may respawn -> idle */ }
           break;
         }
         case 'gone': this.vx = 0; break;
@@ -636,7 +636,7 @@
   class Boss extends Enemy {
     constructor(g, x, y) {
       super(g, 'froyo', x, y);
-      this.isBoss = true; this.def = { ...ENEMY_DEFS.froyo, name: 'GIANT FROYO CONE', reach: 96, dmg: 16, score: 5000, height: 150, knockdown: true };
+      this.isBoss = true; this.def = { ...ENEMY_DEFS.froyo, name: 'GIANT FROYO CONE', reach: 96, dmg: 12, score: 5000, height: 150, knockdown: true };
       this.maxHp = 620; this.hp = this.maxHp; this.height = 150; this.speed = 48;
       this.armorMax = 70; this.armorHp = this.armorMax; this.armorRegen = 0;
       this.phase = 1; this.summoned = false; this.puddleT = 0;
@@ -698,7 +698,7 @@
           }
           break;
         }
-        case 'slamWind': this.vx = 0; this.vy = 0; if (this.stateT >= 0.65) { this.setState('slam'); this.hitDone = false; } break;
+        case 'slamWind': this.vx = 0; this.vy = 0; if (this.stateT >= 0.75) { this.setState('slam'); this.hitDone = false; } break;
         case 'slam': {
           this.vx = 0; this.vy = 0;
           if (!this.hitDone && this.stateT >= 0.1) {
@@ -733,7 +733,7 @@
               for (let i = 0; i < n; i++) {
                 const tx = U.clamp(p.x + U.rand(-140, 140), this.g.camX + 20, this.g.camX + WL.W - 20);
                 const ty = U.rand(WL.FLOOR_TOP, WL.FLOOR_BOTTOM);
-                this.g.projectiles.push(new Projectile(this.g, { kind: 'bigsprinkle', owner: 'enemy', x: tx, y: ty, z: 340 + i * 30, vx: 0, vz: -20, dmg: 9, knockdown: true, falling: true, color: U.pick(['#ff4a4a', '#4ad0ff', '#ffe14a', '#4aff88', '#ff8ae0']), rot: U.rand(0, 3) }));
+                this.g.projectiles.push(new Projectile(this.g, { kind: 'bigsprinkle', owner: 'enemy', x: tx, y: ty, z: 340 + i * 30, vx: 0, vz: -20, dmg: 7, knockdown: true, falling: true, color: U.pick(['#ff4a4a', '#4ad0ff', '#ffe14a', '#4aff88', '#ff8ae0']), rot: U.rand(0, 3) }));
               }
               WL.audio.sfx.throwSfx();
               this.g.fx.text(this.x, this.y - 170, 'SPRINKLE RAIN!', '#fc6');
@@ -753,7 +753,7 @@
     landHit() {
       WL.audio.sfx.slam(); this.g.shake(9, 0.35); this.g.fx.dust(this.x, this.y, 30);
       const p = this.g.player;
-      if (Math.hypot(p.x - this.x, (p.y - this.y) * 1.6) < 95 && p.z < 60) { if (p.hurt(14, this.x, true)) this.g.fx.spark(p.x, p.y - 50, true); }
+      if (Math.hypot(p.x - this.x, (p.y - this.y) * 1.6) < 95 && p.z < 60) { if (p.hurt(12, this.x, true)) this.g.fx.spark(p.x, p.y - 50, true); }
       for (const e of this.g.enemies) if (e !== this && e.hittable && Math.hypot(e.x - this.x, (e.y - this.y) * 1.6) < 95) e.hurt(10, this.x, { knockdown: true });
       if (this.phase >= 3) this.g.puddles.push({ x: this.x, y: this.y + 4, r: 44, t: 0, life: 9 });
     }
