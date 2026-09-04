@@ -66,13 +66,13 @@ js/util.js            helpers, text and drawing primitives
 js/assets.js          image loader (every image is optional; drawn fallbacks exist)
 js/input.js           keyboard + multitouch virtual controls
 js/audio.js           WebAudio synthesized SFX and chiptune sequencer (no audio files)
-js/sprites.js         procedural sprites: Lance (photo head), 7 enemy types, boss, items, FX
+js/sprites.js         procedural sprites: Lance (drawn from photo refs), 7 enemy types, boss, items, FX
 js/entities.js        Player state machine, enemy AI, boss phases, pickups, projectiles
 js/levels.js          stage data, parallax backgrounds, waves, hazards, story text
 js/scenes.js          title, cutscene player, story beats, Play/HUD, pause, game over, ending
 js/main.js            bootstrap, scaling, game loop, scene flow
 assets/cutscenes/     opening cutscene panels (cutscene-01..04)
-assets/lance/         Lance portrait + head crop used by the sprite and HUD
+tools/                make_lance_portraits.py: turns a real photo into the optional likeness PNGs
 ```
 
 ### Swapping in art
@@ -84,8 +84,25 @@ The loader looks for these exact files; drop replacements in with the same names
 - `assets/cutscenes/cutscene-03-lance-arrives.png`
 - `assets/cutscenes/cutscene-04-monsters-attack.png`
 - `assets/lance/lance-portrait.png` — bust on a transparent background (title/ending)
-- `assets/lance/lance-head.png` — head crop, transparent background (in-game sprite)
+- `assets/lance/lance-head.png` — face crop (in-game sprite head; masked to an oval at draw time)
 - `assets/lance/lance-hud.png` — small HUD portrait
+
+### Lance's likeness
+
+Lance is drawn entirely in code (`drawLance`, `lanceHead`, `drawLanceBust` in `js/sprites.js`) to match the
+reference photos: thinning white hair combed back, prominent white mustache, tan/ruddy complexion, red polo with a
+purple-and-white lei, gray cargo shorts, black sneakers, and a mechanic's tool belt worn over the polo. No AI-generated
+composites are used; the three `assets/lance/*.png` files are **optional** and the repo ships without them.
+
+To use crops of the real photos instead of the drawn head, run:
+
+```bash
+pip install pillow
+python3 tools/make_lance_portraits.py path/to/lance-face-toast.png --face X,Y,W,H [--bust X,Y,W,H]
+```
+
+`--face` is the pixel box around the head (hairline to chin); the script writes the three PNGs above with an oval
+alpha mask and the game picks them up automatically on the next load.
 
 ### Debug helpers (browser console)
 

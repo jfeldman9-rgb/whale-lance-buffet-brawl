@@ -64,7 +64,7 @@
       // Lance portrait
       const img = WL.assets.get('lancePortrait');
       if (img) { const s = 190 / img.height; ctx.drawImage(img, W - 30 - img.width * s, 40 + Math.sin(t * 2) * 2, img.width * s, img.height * s); }
-      else S.drawLance(ctx, W - 100, 230, { pose: 'victory', t, facing: 1 });
+      else S.drawLanceBust(ctx, W - 112, 150 + Math.sin(t * 2) * 2, 78, { mood: 'grin' });
       // menu
       if (!this.showHelp) {
         const y0 = 214;
@@ -475,7 +475,8 @@
       // portrait
       D.fillRRect(ctx, 6, 5, 30, 34, 2, '#223', '#ffe14a');
       const hud = WL.assets.get('lanceHud');
-      if (hud) ctx.drawImage(hud, 8, 7, 26, 30); else S.lanceHead(ctx, 21, 22, 26, {});
+      if (hud) ctx.drawImage(hud, 8, 7, 26, 30);
+      else { ctx.save(); ctx.beginPath(); ctx.rect(7, 6, 28, 32); ctx.clip(); ctx.fillStyle = '#3a78c8'; ctx.fillRect(7, 6, 28, 32); S.lanceHead(ctx, 21, 24, 30, { mood: p.hp < 30 ? 'hurt' : 'neutral' }); ctx.restore(); }
       T.draw(ctx, 'LANCE', 42, 6, { size: 8, color: '#ffe14a' });
       const hpPct = p.hp / p.maxHp;
       D.bar(ctx, 42, 17, 120, 8, hpPct, hpPct > 0.5 ? '#4cd94c' : hpPct > 0.25 ? '#f0c020' : '#e03020', '#3a0a0a');
@@ -614,6 +615,7 @@
         T.draw(ctx, `FINAL SCORE ${U.pad(this.score, 7)}`, W / 2, 54, { size: 11, align: 'center', color: '#fff', stroke: '#000' });
         const img = WL.assets.get('lancePortrait');
         if (img) { const s = 150 / img.height; ctx.drawImage(img, W / 2 - img.width * s / 2, 80, img.width * s, img.height * s); }
+        else S.drawLanceBust(ctx, W / 2, 130, 84, { mood: 'grin' });
         S.drawLance(ctx, 110, 250, { pose: 'victory', t, facing: 1, thin: true });
         S.drawEnemy(ctx, W - 130, 250, { type: 'broccoli', pose: 'down', t, facing: 1 });
         S.drawEnemy(ctx, W - 90, 262, { type: 'froyo', pose: 'down', t, facing: 1 });

@@ -10,9 +10,10 @@ WL.assets = (function () {
     cut2: 'assets/cutscenes/cutscene-02-captain-calls.png',
     cut3: 'assets/cutscenes/cutscene-03-lance-arrives.png',
     cut4: 'assets/cutscenes/cutscene-04-monsters-attack.png',
-    // Lance likeness
-    lancePortrait: 'assets/lance/lance-portrait.png', // bust, transparent bg
-    lanceHead: 'assets/lance/lance-head.png',         // head crop for the sprite
+    // Optional real-photo likeness (see tools/make_lance_portraits.py). When these
+    // files are absent Lance is drawn procedurally from the photo spec.
+    lancePortrait: 'assets/lance/lance-portrait.png', // bust, transparent bg (title/ending)
+    lanceHead: 'assets/lance/lance-head.png',         // face crop for the in-game sprite
     lanceHud: 'assets/lance/lance-hud.png'            // small HUD portrait
   };
 
