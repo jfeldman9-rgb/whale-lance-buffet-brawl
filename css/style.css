@@ -1,0 +1,31 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #07070f;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #14142a 0%, #07070f 70%);
+}
+
+canvas#game {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #000;
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+  touch-action: none;
+  outline: none;
+}
