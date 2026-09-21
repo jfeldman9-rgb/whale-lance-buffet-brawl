@@ -9,6 +9,26 @@
   const A = WL.audio;
 
   const anyPress = (inp) => inp.pressed.start || inp.pressed.attack || inp.pressed.jump || inp.pressed.click;
+  const confirmWord = () => (WL.input.touchEnabled ? 'TAP' : 'ENTER');
+
+  const hudHead = { key: '', canvas: null };
+  function drawHudHead(ctx, mood) {
+    const rs = (WL.display && WL.display.renderScale) || 1;
+    const key = mood + '@' + rs;
+    if (hudHead.key !== key || !hudHead.canvas) {
+      const w = 28, h = 32;
+      const c = document.createElement('canvas');
+      c.width = Math.ceil(w * rs); c.height = Math.ceil(h * rs);
+      const g = c.getContext('2d');
+      g.setTransform(rs, 0, 0, rs, 0, 0);
+      g.imageSmoothingEnabled = false;
+      g.fillStyle = '#3a78c8';
+      g.fillRect(0, 0, w, h);
+      S.lanceHead(g, 14, 18, 30, { mood });
+      hudHead.key = key; hudHead.canvas = c;
+    }
+    ctx.drawImage(hudHead.canvas, 7, 6, 28, 32);
+  }
 
   /* ================================================================== */
   /* Title                                                              */
@@ -21,16 +41,25 @@
       if (this.showHelp) { if (anyPress(inp) || inp.pressed.pause) { this.showHelp = false; A.sfx.blip(); } return; }
       if (inp.pressed.down) { this.sel = (this.sel + 1) % this.items.length; A.sfx.blip(); }
       if (inp.pressed.up) { this.sel = (this.sel + this.items.length - 1) % this.items.length; A.sfx.blip(); }
-      if (inp.pressed.click && inp.touchEnabled) {
-        // touch: tapping cycles/selects — simple: tap = start with intro
+      if (inp.pressed.click && inp.pointer && inp.pointer.type === 'mouse') {
+        const y0 = 214;
+        for (let i = 0; i < this.items.length; i++) {
+          const y = y0 + i * 20;
+          if (inp.pointer.y >= y - 3 && inp.pointer.y < y + 16 && Math.abs(inp.pointer.x - (W / 2 - 80)) < 130) {
+            this.sel = i; this.choose(); return;
+          }
+        }
+      }
+      if (inp.pressed.click && WL.input.touchEnabled) {
         A.sfx.select(); this.game.startNewGame(true); return;
       }
-      if (inp.pressed.start || inp.pressed.attack || inp.pressed.jump) {
-        A.sfx.select();
-        if (this.sel === 0) this.game.startNewGame(true);
-        else if (this.sel === 1) this.game.startNewGame(false);
-        else this.showHelp = true;
-      }
+      if (inp.pressed.start || inp.pressed.attack || inp.pressed.jump) this.choose();
+    }
+    choose() {
+      A.sfx.select();
+      if (this.sel === 0) this.game.startNewGame(true);
+      else if (this.sel === 1) this.game.startNewGame(false);
+      else this.showHelp = true;
     }
     draw(ctx) {
       const t = this.t;
@@ -72,9 +101,14 @@
           const seld = i === this.sel;
           T.draw(ctx, (seld ? '> ' : '  ') + it, W / 2 - 80, y0 + i * 20, { size: 11, align: 'center', color: seld ? (Math.floor(t * 6) % 2 ? '#ffe14a' : '#fff') : '#cfd' });
         });
-        if (Math.floor(t * 2) % 2 === 0) T.draw(ctx, WL.input.touchEnabled ? 'TAP TO START' : 'PRESS ENTER', W / 2 - 80, 284, { size: 9, align: 'center', color: '#fff' });
-        T.draw(ctx, 'ARROWS/WASD MOVE  J ATTACK  K JUMP  L SPRAY  I TOOLBOX  F FART  P PAUSE  M MUTE', W / 2, 322, { size: 6, align: 'center', color: '#bcd' });
-        T.draw(ctx, '(c) 2026 WHALE LANCE A/C & HEATING. INSERT COIN. A FAMILY ROAST.', W / 2, 340, { size: 6, align: 'center', color: '#89a' });
+        if (Math.floor(t * 2) % 2 === 0) T.draw(ctx, WL.input.touchEnabled ? 'TAP TO START' : 'PRESS ENTER OR CLICK', W / 2 - 80, 284, { size: 9, align: 'center', color: '#fff' });
+        const keys = WL.input.gamepad.connected
+          ? 'PAD: STICK MOVE   X ATK   A JUMP   Y SPRAY   RB BOX   B FART   START PAUSE'
+          : 'WASD/ARROWS MOVE   E/J ATK   SPACE/K JUMP   Q/L SPRAY   R/I BOX   F FART';
+        T.draw(ctx, keys, W / 2, 318, { size: 6, align: 'center', color: '#bcd' });
+        T.draw(ctx, 'ESC PAUSE    M MUTE    \\ FULLSCREEN    CLICK A MENU ROW', W / 2, 332, { size: 6, align: 'center', color: '#9ab' });
+        T.draw(ctx, '(c) 2026 WHALE LANCE A/C & HEATING. INSERT COIN. A FAMILY ROAST.', W / 2, 346, { size: 5, align: 'center', color: '#89a' });
+        if (WL.display.pc) T.draw(ctx, WL.display.modeLabel(), 8, 6, { size: 6, color: '#cde' });
       } else this.drawHelp(ctx);
       D.scanlines(ctx, 0.08);
     }
@@ -82,18 +116,17 @@
       D.fillRRect(ctx, 30, 24, W - 60, H - 48, 6, 'rgba(0,0,20,0.9)', '#ffe14a');
       const lines = [
         ['HOW TO PLAY', '#ffe14a'],
-        ['MOVE      Arrows / WASD / left-side touch stick', '#fff'],
-        ['ATTACK    J or Z      3-hit combo: screwdriver > wrench > pipe wrench', '#fff'],
+        ['MOVE      Arrows or WASD. Gamepad stick or d-pad. Touch stick on phones.', '#fff'],
+        ['ATTACK    E, J or Z       screwdriver, then wrench, then pipe wrench', '#fff'],
         ['GRAB      Walk into an enemy = duct-tape grab', '#fff'],
         ['          ATTACK again = knee. Back+ATTACK or JUMP = throw', '#fff'],
-        ['JUMP      K / X / Space    ATTACK in air = flying boot', '#fff'],
-        ['SPRAY     L or C      Refrigerant spray: freezes enemies (costs a little HP)', '#fff'],
-        ['TOOLBOX   I or V      Throw the toolbox. Pick it back up!', '#fff'],
-        ['FART      F or B      VOLCANO FART: clears the screen when the meter is full', '#9f3'],
-        ['          Fill it with BEANS, CHILI and BUFFET LEFTOVERS. Never salad.', '#9f3'],
-        ['HEAL      Burgers and turkey legs. Casino chips = points.', '#fff'],
-        ['Lance HATES frozen yogurt: 2x points for every cup.', '#f9c'],
-        ['P pause   M mute   —   Press any key to go back', '#aaa']
+        ['JUMP      Space, K or X    ATTACK in the air = flying boot', '#fff'],
+        ['SPRAY     Q, L or C       Refrigerant spray. Freezes. Costs a little HP.', '#fff'],
+        ['TOOLBOX   R, I or V       Throw the toolbox. Pick it back up!', '#fff'],
+        ['FART      F or B          VOLCANO FART when the green meter is full', '#9f3'],
+        ['PAD       X atk   A jump   Y spray   RB box   B fart   Start pause', '#bcd'],
+        ['ESC pause    M mute    \\ fullscreen    Burgers heal. Froyo is 2x.', '#aaa'],
+        ['Press any key to go back', '#aaa']
       ];
       lines.forEach(([l, c], i) => T.draw(ctx, l, 44, 36 + i * 22, { size: i === 0 ? 11 : 7, color: c }));
     }
@@ -148,7 +181,7 @@
       const shown = this.fullText().slice(0, Math.floor(this.chars)).split('\n');
       shown.forEach((l, i) => T.draw(ctx, l, 18, H - boxH + 28 + i * 12, { size: 7, color: '#fff' }));
       T.draw(ctx, `${this.idx + 1}/${this.panels.length}`, W - 18, H - boxH + 12, { size: 7, align: 'right', color: '#aaa' });
-      if (Math.floor(this.t * 2) % 2 === 0) T.draw(ctx, WL.input.touchEnabled ? 'TAP' : 'ENTER', W - 18, H - 18, { size: 7, align: 'right', color: '#aaa' });
+      if (Math.floor(this.t * 2) % 2 === 0) T.draw(ctx, confirmWord(), W - 18, H - 18, { size: 7, align: 'right', color: '#aaa' });
       T.draw(ctx, 'P: SKIP', 18, H - 18, { size: 6, color: '#777' });
     }
   }
@@ -196,7 +229,7 @@
       T.draw(ctx, this.title, 18, 282, { size: 8, color: '#ffe14a' });
       const shown = this.fullText().slice(0, Math.floor(this.chars)).split('\n');
       shown.forEach((l, i) => T.draw(ctx, l, 18, 298 + i * 13, { size: 7, color: '#fff' }));
-      if (Math.floor(this.t * 2) % 2 === 0) T.draw(ctx, WL.input.touchEnabled ? 'TAP' : 'ENTER', W - 18, H - 16, { size: 7, align: 'right', color: '#aaa' });
+      if (Math.floor(this.t * 2) % 2 === 0) T.draw(ctx, confirmWord(), W - 18, H - 16, { size: 7, align: 'right', color: '#aaa' });
     }
   }
 
@@ -249,7 +282,7 @@
       this.enemies = []; this.pickups = []; this.objects = []; this.projectiles = []; this.puddles = []; this.hazards = [];
       this.fx = new FX();
       this.hitstop = 0; this.shakeAmt = 0; this.shakeT = 0; this.shakeX = 0; this.shakeY = 0;
-      this.paused = false; this.pauseSel = 0;
+      this.paused = false; this.pauseSel = 0; this.pauseLatch = false;
       this.phase = 'intro'; this.phaseT = 0; // intro | play | clear | bossdead | dead
       this.banner = null; this.bannerT = 0;
       this.tutorial = null; this.tutorialT = 0;
@@ -347,8 +380,18 @@
 
     update(dt, inp) {
       this.t += dt;
-      if (inp.pressed.pause && this.phase === 'play') { this.paused = !this.paused; A.sfx.blip(); if (this.paused) this.pauseSel = 0; }
-      if (this.paused) { this.updatePause(inp); return; }
+      if (inp.pressed.pause && this.phase === 'play') {
+        if (this.paused) { this.paused = false; A.sfx.blip(); return; }
+        this.paused = true; this.pauseSel = 0; this.pauseLatch = true; A.sfx.blip();
+      } else if (inp.pressed.start && this.phase === 'play' && !this.paused) {
+        // Gamepad Start and Enter open the pause menu. Latch so this same
+        // press doesn't immediately confirm "RESUME".
+        this.paused = true; this.pauseSel = 0; this.pauseLatch = true; A.sfx.blip();
+      }
+      if (this.paused) {
+        if (this.pauseLatch) { this.pauseLatch = false; return; }
+        this.updatePause(inp); return;
+      }
       if (this.bannerT > 0) this.bannerT -= dt;
       if (this.tutorialT > 0) this.tutorialT -= dt;
       if (this.flashT > 0) this.flashT -= dt;
@@ -368,7 +411,10 @@
       const p = this.player;
       const L = this.level;
       if (!this.locked) {
-        const target = p.x - W * 0.42;
+        // Desktop framing sits Lance a little further left so the next wave
+        // is on screen before it arrives.
+        const lead = WL.display.pc ? 0.33 : 0.42;
+        const target = p.x - W * lead;
         this.camX = Math.max(this.camX, Math.min(target, L.length - W));
         const wv = this.currentWave();
         if (wv && p.x >= wv.x) {
@@ -420,16 +466,31 @@
       this.objects = this.objects.filter(o => !o.remove);
     }
     updatePause(inp) {
-      const items = 3;
-      if (inp.pressed.down) { this.pauseSel = (this.pauseSel + 1) % items; A.sfx.blip(); }
-      if (inp.pressed.up) { this.pauseSel = (this.pauseSel + items - 1) % items; A.sfx.blip(); }
-      if (inp.pressed.mute) A.toggleMute();
-      if (inp.pressed.start || inp.pressed.attack || (inp.pressed.click && inp.touchEnabled && !inp.pressed.pause)) {
-        A.sfx.select();
-        if (this.pauseSel === 0) this.paused = false;
-        else if (this.pauseSel === 1) { A.toggleMute(); }
-        else { A.stopMusic(); this.game.toTitle(); }
+      const n = 5;
+      if (inp.pressed.down) { this.pauseSel = (this.pauseSel + 1) % n; A.sfx.blip(); }
+      if (inp.pressed.up) { this.pauseSel = (this.pauseSel + n - 1) % n; A.sfx.blip(); }
+      const dir = inp.pressed.right ? 1 : inp.pressed.left ? -1 : 0;
+      if (dir && this.pauseSel === 1) { A.cycleVolume(dir); A.sfx.blip(); if (WL.display.save) WL.display.save(); }
+      else if (dir && this.pauseSel === 2) { WL.display.toggleFullscreen(); A.sfx.blip(); }
+      else if (dir && this.pauseSel === 3) { WL.display.cycleMode(); A.sfx.blip(); }
+      if (inp.pressed.mute) { A.toggleMute(); if (WL.display.save) WL.display.save(); }
+      if (inp.pressed.click && inp.pointer && inp.pointer.type === 'mouse') {
+        const y0 = 140;
+        for (let i = 0; i < n; i++) {
+          if (Math.abs(inp.pointer.y - (y0 + i * 20)) < 11 && Math.abs(inp.pointer.x - W / 2) < 160) {
+            this.pauseSel = i; this.activatePause(); return;
+          }
+        }
       }
+      if (inp.pressed.start || inp.pressed.attack || (inp.pressed.click && WL.input.touchEnabled && !inp.pressed.pause)) this.activatePause();
+    }
+    activatePause() {
+      A.sfx.select();
+      if (this.pauseSel === 0) this.paused = false;
+      else if (this.pauseSel === 1) { A.cycleVolume(1); if (WL.display.save) WL.display.save(); }
+      else if (this.pauseSel === 2) WL.display.toggleFullscreen();
+      else if (this.pauseSel === 3) WL.display.cycleMode();
+      else { A.stopMusic(); this.game.toTitle(); }
     }
 
     /* ---- drawing ---- */
@@ -476,7 +537,7 @@
       D.fillRRect(ctx, 6, 5, 30, 34, 2, '#223', '#ffe14a');
       const hud = WL.assets.get('lanceHud');
       if (hud) ctx.drawImage(hud, 8, 7, 26, 30);
-      else { ctx.save(); ctx.beginPath(); ctx.rect(7, 6, 28, 32); ctx.clip(); ctx.fillStyle = '#3a78c8'; ctx.fillRect(7, 6, 28, 32); S.lanceHead(ctx, 21, 24, 30, { mood: p.hp < 30 ? 'hurt' : 'neutral' }); ctx.restore(); }
+      else drawHudHead(ctx, p.hp < 30 ? 'hurt' : 'neutral');
       T.draw(ctx, 'LANCE', 42, 6, { size: 8, color: '#ffe14a' });
       const hpPct = p.hp / p.maxHp;
       D.bar(ctx, 42, 17, 120, 8, hpPct, hpPct > 0.5 ? '#4cd94c' : hpPct > 0.25 ? '#f0c020' : '#e03020', '#3a0a0a');
@@ -488,7 +549,7 @@
       const pulse = full ? 0.6 + Math.sin(this.t * 10) * 0.4 : 1;
       T.draw(ctx, 'VOLCANO FART', 42, 29, { size: 6, color: full ? `rgba(160,255,80,${pulse})` : '#9f3' });
       D.bar(ctx, 118, 30, 100, 6, p.fart / p.fartMax, full ? `rgba(160,255,80,${pulse})` : '#7ad83a', '#12300a');
-      if (full && Math.floor(this.t * 4) % 2 === 0) T.draw(ctx, 'READY! PRESS F', 224, 29, { size: 6, color: '#bfff5a' });
+      if (full && Math.floor(this.t * 4) % 2 === 0) T.draw(ctx, WL.input.gamepad.connected ? 'READY!  B' : 'READY! PRESS F', 224, 29, { size: 6, color: '#bfff5a' });
       // toolbox indicator
       if (p.hasToolbox) { S.tool(ctx, 'toolbox', 246, 20, 0); }
       // score
@@ -537,12 +598,23 @@
     }
     drawPause(ctx) {
       ctx.fillStyle = 'rgba(0,0,10,0.7)'; ctx.fillRect(0, 0, W, H);
-      T.draw(ctx, 'PAUSED', W / 2, 90, { size: 22, align: 'center', gradient: ['#fff', '#ffe14a'], stroke: '#000', strokeWidth: 5 });
-      const items = ['RESUME', A.muted ? 'SOUND: OFF' : 'SOUND: ON', 'QUIT TO TITLE'];
-      items.forEach((it, i) => T.draw(ctx, (i === this.pauseSel ? '> ' : '  ') + it, W / 2, 150 + i * 22, { size: 10, align: 'center', color: i === this.pauseSel ? '#ffe14a' : '#ddd' }));
-      T.draw(ctx, 'J ATTACK  K JUMP  L SPRAY  I TOOLBOX  F FART', W / 2, 250, { size: 7, align: 'center', color: '#bcd' });
-      T.draw(ctx, 'Walk into an enemy = duct-tape grab. J knee, Back+J or K throw.', W / 2, 264, { size: 6, align: 'center', color: '#bcd' });
-      T.draw(ctx, `KILLS: ${this.kills}   HITS: ${this.player.hits}`, W / 2, 290, { size: 7, align: 'center', color: '#9ab' });
+      T.draw(ctx, 'PAUSED', W / 2, 70, { size: 22, align: 'center', gradient: ['#fff', '#ffe14a'], stroke: '#000', strokeWidth: 5 });
+      const fs = WL.display.fullscreen || !!document.fullscreenElement;
+      const items = [
+        'RESUME',
+        'SOUND: ' + A.volumeLabel() + '   < >',
+        'FULLSCREEN: ' + (fs ? 'ON' : 'OFF') + '   < >',
+        'DISPLAY: ' + WL.display.modeLabel() + '   < >',
+        'QUIT TO TITLE'
+      ];
+      items.forEach((it, i) => T.draw(ctx, (i === this.pauseSel ? '> ' : '  ') + it, W / 2, 140 + i * 20, { size: 9, align: 'center', color: i === this.pauseSel ? '#ffe14a' : '#ddd' }));
+      const keys = WL.input.gamepad.connected
+        ? 'PAD  X ATK  A JUMP  Y SPRAY  RB BOX  B FART'
+        : 'E/J ATK   SPACE/K JUMP   Q/L SPRAY   R/I BOX   F FART';
+      T.draw(ctx, keys, W / 2, 256, { size: 7, align: 'center', color: '#bcd' });
+      T.draw(ctx, 'Walk into an enemy = duct-tape grab. Attack = knee. Back+Attack or Jump = throw.', W / 2, 272, { size: 6, align: 'center', color: '#bcd' });
+      T.draw(ctx, 'Left / right changes the highlighted setting. \\ toggles fullscreen.', W / 2, 286, { size: 6, align: 'center', color: '#9ab' });
+      T.draw(ctx, `KILLS: ${this.kills}   HITS: ${this.player.hits}`, W / 2, 310, { size: 7, align: 'center', color: '#9ab' });
       if (WL.input.touchEnabled) WL.input.drawTouch(ctx, { buttons: false });
     }
   }
@@ -570,7 +642,7 @@
       T.draw(ctx, '"Should have stayed away from the buffet."', W / 2, 104, { size: 7, align: 'center', color: '#f9c' });
       T.draw(ctx, `SCORE ${U.pad(this.score, 7)}`, W / 2, 128, { size: 10, align: 'center', color: '#ffe14a' });
       T.draw(ctx, `CONTINUE?  ${this.count}`, W / 2, 290, { size: 14, align: 'center', color: Math.floor(this.t * 4) % 2 ? '#fff' : '#ffe14a', stroke: '#000', strokeWidth: 4 });
-      T.draw(ctx, WL.input.touchEnabled ? 'TAP TO INSERT COIN' : 'PRESS ENTER TO INSERT COIN', W / 2, 316, { size: 7, align: 'center', color: '#bcd' });
+      T.draw(ctx, WL.input.touchEnabled ? 'TAP TO INSERT COIN' : 'CLICK OR ENTER TO INSERT COIN', W / 2, 316, { size: 7, align: 'center', color: '#bcd' });
       D.scanlines(ctx, 0.1);
     }
   }

@@ -303,6 +303,7 @@
       if (this.g.cheatInvuln) return false;
       if (this.grab) this.releaseGrab(false);
       this.hp -= dmg; this.flash = 0.12;
+      if (WL.input.rumble) WL.input.rumble(knockdown ? 120 : 60, knockdown ? 0.7 : 0.35, 0.25);
       const dir = this.x < fromX ? -1 : 1; // pushed away from attacker
       this.comboCount = 0;
       if (this.hp <= 0) {

@@ -29,3 +29,10 @@ canvas#game {
   touch-action: none;
   outline: none;
 }
+
+/* Desktop sharp mode: the canvas is already near monitor resolution. */
+canvas#game.pc {
+  box-shadow:
+    0 0 0 2px #1a1a2e,
+    0 18px 50px rgba(0, 0, 0, 0.55);
+}

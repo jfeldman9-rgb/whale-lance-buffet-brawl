@@ -240,9 +240,9 @@
       ],
       pickups: [{ kind: 'beans', x: 720, y: 330 }, { kind: 'chip', x: 1350, y: 220 }],
       waves: [
-        wave(260, [grp(['broccoli', 1, { side: 1 }])], { tutorial: 'ATTACK: J (3-hit tool combo)' }),
-        wave(560, [grp(['broccoli', 1, { side: 1 }], ['sprout', 2, { side: -1 }])], { tutorial: 'Walk INTO an enemy = DUCT-TAPE GRAB. Then J = knee, Back+J or K = throw them!' }),
-        wave(950, [grp(['celery', 1, { side: 1 }], ['broccoli', 1, { side: 1 }]), grp(['sprout', 3, { side: -1 }])], { tutorial: 'SPECIAL: L = refrigerant spray (freezes). BOX: I = throw toolbox.' }),
+        wave(260, [grp(['broccoli', 1, { side: 1 }])], { tutorial: 'ATTACK: E or J (3-hit tool combo). Gamepad X.' }),
+        wave(560, [grp(['broccoli', 1, { side: 1 }], ['sprout', 2, { side: -1 }])], { tutorial: 'Walk INTO an enemy = DUCT-TAPE GRAB. Then attack = knee, Back+attack or jump = throw!' }),
+        wave(950, [grp(['celery', 1, { side: 1 }], ['broccoli', 1, { side: 1 }]), grp(['sprout', 3, { side: -1 }])], { tutorial: 'SPRAY: Q or L freezes enemies. TOOLBOX: R or I. Gamepad Y and RB.' }),
         wave(1450, [grp(['broccoli', 2, { side: 1 }], ['celery', 1, { side: -1 }]), grp(['sprout', 2, { side: 1 }], ['broccoli', 1, { side: -1 }])], { tutorial: 'Eat BEANS / CHILI / LEFTOVERS to fill the VOLCANO FART meter. F when full!' }),
         wave(2050, [grp(['celery', 2, { side: 1 }], ['broccoli', 2, { side: -1 }], ['sprout', 2, { side: 1 }])]),
         wave(2400, [grp(['broccoli', 1, { side: 1, elite: true }], ['celery', 1, { side: -1 }]), grp(['sprout', 4, { side: 1 }])])

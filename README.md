@@ -2,7 +2,9 @@
 
 A Streets of Rage-style side-scrolling beat-em-up. The A/C on the *Pride of America* is out, the captain calls **Whale Lance Air Conditioning and Heating**, and Lance has to fight his way through four decks of angry healthy food to fix it — while staying away from the buffet.
 
-Plain HTML5 Canvas + vanilla JavaScript. No build step, no dependencies. Works on desktop (keyboard) and mobile (touch).
+Plain HTML5 Canvas + vanilla JavaScript. No build step, no dependencies. Plays on a desktop with keyboard or a gamepad, and on a phone with touch.
+
+On a mouse-and-keyboard screen the game draws at 2x or 3x (capped) so Lance and the decks stay sharp, letterboxed in the window. Phones stay on the classic 640×360 picture. Pause → Display switches Auto / Sharp / Classic, and the choice is remembered in this browser.
 
 ## Play
 
@@ -21,17 +23,24 @@ Then open <http://localhost:8000>.
 
 ## Controls
 
-| Action | Keyboard | Touch |
-| --- | --- | --- |
-| Move | Arrow keys / WASD | Virtual stick (left half of screen) |
-| Attack (3-hit tool combo: screwdriver jab → wrench smash → pipe-wrench sweep) | `J` or `Z` | **ATK** |
-| Duct-tape grab | Walk into an enemy. Attack = knee. Back + Attack or Jump = throw | same |
-| Jump / flying boot | `K`, `X` or `Space` (+ Attack in the air) | **JMP** |
-| Refrigerant spray (freezes enemies, costs a little HP) | `L` or `C` | **SPR** |
-| Toolbox throw (pick it back up after) | `I` or `V` | **BOX** |
-| **Volcano Fart** (screen clear, needs a full meter) | `F` or `B` | **FART** |
-| Pause | `P` / `Esc` | **II** |
-| Mute | `M` | pause menu |
+Two keyboard layouts work at once: a PC cluster around WASD, and the arcade cluster (right hand on J / K / L).
+
+| Action | Keyboard | Gamepad | Touch |
+| --- | --- | --- | --- |
+| Move | Arrow keys / WASD | Left stick or d-pad | Virtual stick (left half of screen) |
+| Attack (screwdriver jab → wrench smash → pipe-wrench sweep) | `E`, `J` or `Z` | **X** | **ATK** |
+| Duct-tape grab | Walk into an enemy. Attack = knee. Back + Attack or Jump = throw | same | same |
+| Jump / flying boot | `Space`, `K` or `X` (+ Attack in the air) | **A** | **JMP** |
+| Refrigerant spray (freezes enemies, costs a little HP) | `Q`, `L` or `C` | **Y** | **SPR** |
+| Toolbox throw (pick it back up after) | `R`, `I` or `V` | **RB** or **LB** | **BOX** |
+| **Volcano Fart** (screen clear, needs a full meter) | `F` or `B` | **B** | **FART** |
+| Pause | `Esc`, `P` or `Enter` | **Start** or **Back** | **II** |
+| Mute | `M` | pause menu | pause menu |
+| Fullscreen | Backslash, or F11 when the browser gives the page that key | pause menu | pause menu |
+
+Pause menu on desktop: sound volume (left/right), fullscreen, and display mode (Auto / Sharp / Classic). Alt-tabbing pauses the fight. A hit rumbles the gamepad when the pad supports it.
+
+The title screen accepts a click on a menu row. Backslash toggles fullscreen from anywhere.
 
 ### The Volcano Fart
 
@@ -64,7 +73,7 @@ index.html            entry point (GitHub Pages ready, served from repo root)
 css/style.css
 js/util.js            helpers, text and drawing primitives
 js/assets.js          image loader (every image is optional; drawn fallbacks exist)
-js/input.js           keyboard + multitouch virtual controls
+js/input.js           keyboard (WASD cluster + arcade keys), gamepad, touch
 js/audio.js           WebAudio synthesized SFX and chiptune sequencer (no audio files)
 js/sprites.js         procedural sprites: Lance (drawn from photo refs), 7 enemy types, boss, items, FX
 js/entities.js        Player state machine, enemy AI, boss phases, pickups, projectiles

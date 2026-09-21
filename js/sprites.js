@@ -245,6 +245,32 @@ WL.sprites = (function () {
     ctx.restore();
   }
 
+  /* Hit-flash without ctx.filter. Filters force a full-frame offscreen pass and
+     get expensive once the desktop backing store is 2–3x. Draw the sprite into
+     a small buffer, punch it to white, and blit it back. */
+  let flashCanvas = null, flashRS = 0;
+  const FLASH_W = 320, FLASH_H = 300;
+  function drawFlashed(ctx, x, y, ox, oy, drawFn) {
+    const rs = Math.max(1, (WL.display && WL.display.renderScale) || 1);
+    if (!flashCanvas || flashRS !== rs) {
+      flashCanvas = document.createElement('canvas');
+      flashCanvas.width = FLASH_W * rs;
+      flashCanvas.height = FLASH_H * rs;
+      flashRS = rs;
+    }
+    const f = flashCanvas.getContext('2d');
+    f.setTransform(rs, 0, 0, rs, 0, 0);
+    f.clearRect(0, 0, FLASH_W, FLASH_H);
+    f.imageSmoothingEnabled = false;
+    drawFn(f);
+    f.setTransform(1, 0, 0, 1, 0, 0);
+    f.globalCompositeOperation = 'source-atop';
+    f.fillStyle = '#fff';
+    f.fillRect(0, 0, flashCanvas.width, flashCanvas.height);
+    f.globalCompositeOperation = 'source-over';
+    ctx.drawImage(flashCanvas, x - ox, y - oy, FLASH_W, FLASH_H);
+  }
+
   /**
    * drawLance(ctx, x, y, o)
    * o.pose: idle|walk|jab|smash|smashWind|sweep|spray|throw|grab|grabHit|jump|jumpkick|hurt|down|fart|fartCharge|victory|dead|carry
@@ -252,6 +278,10 @@ WL.sprites = (function () {
    */
   function drawLance(ctx, x, y, o) {
     o = o || {};
+    if (o.flash) {
+      drawFlashed(ctx, x, y, 150, 250, (f) => drawLance(f, 150, 250, Object.assign({}, o, { flash: false })));
+      return;
+    }
     const t = o.t || 0;
     const pose = o.pose || 'idle';
     const thin = !!o.thin;
@@ -362,8 +392,6 @@ WL.sprites = (function () {
         fe = { x: 16, y: -54 }; fh = { x: 20, y: -46 }; toolKind = 'toolbox'; toolAng = 0;
         break;
     }
-
-    if (o.flash) { ctx.filter = 'brightness(3)'; }
 
     if (lying) {
       // knocked down: draw rotated body lying on back
@@ -668,12 +696,14 @@ WL.sprites = (function () {
   function drawEnemy(ctx, x, y, e) {
     const V = VEG[e.type];
     if (!V) return;
+    if (e.flash) {
+      drawFlashed(ctx, x, y, 150, 250, (f) => drawEnemy(f, 150, 250, Object.assign({}, e, { flash: false })));
+      return;
+    }
     ctx.save();
     ctx.translate(x, y);
     if (e.facing < 0) ctx.scale(-1, 1);
     if (e.alpha !== undefined) ctx.globalAlpha = e.alpha;
-    if (e.flash) ctx.filter = 'brightness(3)';
-    else if (e.stunTint) ctx.filter = 'hue-rotate(160deg) saturate(0.5)';
     const hipY = -V.h * 0.4, shoulderY = -V.h * 0.72;
     const r = rig(e.pose, e.t || 0, hipY, shoulderY, V.h * 0.12);
     if (r.lying) {
@@ -687,13 +717,25 @@ WL.sprites = (function () {
     } else {
       enemyDrawers[e.type](ctx, e, r);
       if (e.pose === 'stunned') {
-        ctx.filter = 'none';
         for (let i = 0; i < 4; i++) { const a = (e.t || 0) * 6 + i * 1.57; D.circle(ctx, Math.cos(a) * 14, -V.h - 6 + Math.sin(a) * 4, 2.2, '#8ff', OUT); }
       }
     }
+    if (e.stunTint) {
+      // Frost shell. Replaces a hue-rotate filter, which re-rasterizes the
+      // whole frame on desktop resolutions.
+      ctx.save();
+      ctx.strokeStyle = '#d7f4ff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(0, -V.h * 0.48, V.h * 0.34, V.h * 0.46, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.25;
+      ctx.beginPath();
+      ctx.moveTo(-V.h * 0.12, -V.h * 0.78); ctx.lineTo(V.h * 0.04, -V.h * 0.46); ctx.lineTo(-V.h * 0.06, -V.h * 0.18);
+      ctx.moveTo(V.h * 0.16, -V.h * 0.7); ctx.lineTo(0, -V.h * 0.5); ctx.lineTo(V.h * 0.1, -V.h * 0.28);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(190,235,255,0.35)';
+      ctx.beginPath(); ctx.ellipse(0, -V.h * 0.48, V.h * 0.22, V.h * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     if (e.taped) {
-      // duct tape wrap around torso
-      ctx.filter = 'none';
       ctx.fillStyle = '#9a9a9a'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5;
       for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.rect(-V.h * 0.22, -V.h * 0.62 + i * 8, V.h * 0.44, 5); ctx.fill(); ctx.stroke(); }
     }
@@ -706,10 +748,13 @@ WL.sprites = (function () {
    * poses: idle, walk, slamWind, slam, jump, land, rainWind, hurt, stagger, dead
    */
   function drawBoss(ctx, x, y, b) {
+    if (b.flash) {
+      drawFlashed(ctx, x, y, 160, 270, (f) => drawBoss(f, 160, 270, Object.assign({}, b, { flash: false })));
+      return;
+    }
     ctx.save();
     ctx.translate(x, y);
     if (b.facing < 0) ctx.scale(-1, 1);
-    if (b.flash) ctx.filter = 'brightness(3)';
     const t = b.t || 0;
     const H = 150;
     let lean = 0, crouch = 0, bob = Math.sin(t * 3) * 1.5;

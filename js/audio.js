@@ -6,12 +6,13 @@ WL.audio = (function () {
   let ctx = null, master = null, musicGain = null, sfxGain = null;
   let muted = false;
   let unlocked = false;
+  let volume = 1; // 0..1, multiplied into the master gain
 
   function init() {
     if (ctx) return;
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
-      master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+      master = ctx.createGain(); master.gain.value = muted ? 0 : 0.8 * volume; master.connect(ctx.destination);
       musicGain = ctx.createGain(); musicGain.gain.value = 0.32; musicGain.connect(master);
       sfxGain = ctx.createGain(); sfxGain.gain.value = 0.9; sfxGain.connect(master);
     } catch (e) { ctx = null; }
@@ -24,11 +25,33 @@ WL.audio = (function () {
     unlocked = true;
   }
 
+  function applyMaster() {
+    if (master) master.gain.value = muted || volume <= 0 ? 0 : 0.8 * volume;
+  }
   function setMuted(m) {
     muted = m;
-    if (master) master.gain.value = m ? 0 : 0.8;
+    applyMaster();
   }
   function toggleMute() { setMuted(!muted); return muted; }
+  function setVolume(v) {
+    volume = v < 0 ? 0 : v > 1 ? 1 : v;
+    if (volume <= 0) muted = true;
+    else if (muted && volume > 0) muted = false;
+    applyMaster();
+    return volume;
+  }
+  const VOLUME_STEPS = [1, 0.65, 0.35, 0];
+  function cycleVolume(dir) {
+    let i = 0, best = 99;
+    VOLUME_STEPS.forEach((s, n) => { const d = Math.abs(s - (muted ? 0 : volume)); if (d < best) { best = d; i = n; } });
+    i = (i + (dir || 1) + VOLUME_STEPS.length) % VOLUME_STEPS.length;
+    setVolume(VOLUME_STEPS[i]);
+    return VOLUME_STEPS[i];
+  }
+  function volumeLabel() {
+    if (muted || volume <= 0) return 'OFF';
+    return Math.round(volume * 100) + '%';
+  }
 
   /* ---------- SFX primitives ---------- */
   function tone(opts) {
@@ -181,5 +204,8 @@ WL.audio = (function () {
     timer = null; song = null; songName = null;
   }
 
-  return { init, unlock, sfx, playMusic, stopMusic, toggleMute, setMuted, get muted() { return muted; }, get unlocked() { return unlocked; } };
+  return {
+    init, unlock, sfx, playMusic, stopMusic, toggleMute, setMuted, setVolume, cycleVolume, volumeLabel,
+    get muted() { return muted; }, get unlocked() { return unlocked; }, get volume() { return volume; }
+  };
 })();

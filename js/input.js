@@ -1,37 +1,52 @@
-/* Unified keyboard + touch input.
-   Actions: attack, jump, special, tool, fart, start, pause, mute
+/* Unified keyboard + gamepad + touch input.
+   Actions: attack, jump, special, tool, fart, start, pause, mute, fullscreen
    Movement: axis.x / axis.y in [-1, 1]. */
 'use strict';
 
 WL.input = (function () {
+  // Two layouts on purpose:
+  //   arcade (right hand on JKL) and PC (left hand on WASD, nearby Q/E/R/F/Space).
   const KEYMAP = {
     ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
     a: 'left', d: 'right', w: 'up', s: 'down',
     A: 'left', D: 'right', W: 'up', S: 'down',
-    j: 'attack', J: 'attack', z: 'attack', Z: 'attack',
+    e: 'attack', E: 'attack', j: 'attack', J: 'attack', z: 'attack', Z: 'attack',
     k: 'jump', K: 'jump', x: 'jump', X: 'jump',
-    l: 'special', L: 'special', c: 'special', C: 'special',
-    i: 'tool', I: 'tool', v: 'tool', V: 'tool', u: 'tool', U: 'tool',
+    q: 'special', Q: 'special', l: 'special', L: 'special', c: 'special', C: 'special',
+    r: 'tool', R: 'tool', i: 'tool', I: 'tool', v: 'tool', V: 'tool', u: 'tool', U: 'tool',
     f: 'fart', F: 'fart', b: 'fart', B: 'fart',
     ' ': 'jump',
     Enter: 'start', p: 'pause', P: 'pause', Escape: 'pause',
-    m: 'mute', M: 'mute'
+    m: 'mute', M: 'mute',
+    '\\': 'fullscreen', F11: 'fullscreen'
   };
 
   const held = {};
+  const keyDown = {};
+  const padDown = {};
   const pressed = {};
-  const queue = [];   // edge events queued between frames
+  const queue = [];
   let anyKey = false;
+
+  const pointer = { x: 0, y: 0, type: '' };
+
+  const gamepad = {
+    connected: false,
+    index: null,
+    x: 0,
+    y: 0,
+    stickX: 0,
+    stickY: 0
+  };
 
   // ---- touch state ----
   const touch = {
     enabled: false,
     joy: { id: null, ox: 0, oy: 0, x: 0, y: 0, active: false },
     buttons: [],
-    pointers: new Map() // pointerId -> {x,y,button}
+    pointers: new Map()
   };
 
-  // Button layout in canvas space (right side)
   function layoutButtons() {
     const W = WL.W, H = WL.H;
     touch.buttons = [
@@ -45,6 +60,24 @@ WL.input = (function () {
   }
   layoutButtons();
 
+  function syncHeld(action) {
+    const on = !!(keyDown[action] || padDown[action] || (touch.joy && false));
+    // touch buttons write `held` directly; don't clear those here
+    if (keyDown[action] || padDown[action]) {
+      if (!held[action]) queue.push(action);
+      held[action] = true;
+      anyKey = true;
+    } else if (!touchOwns(action)) {
+      held[action] = false;
+    }
+    return on;
+  }
+  function touchOwns(action) {
+    if (touch.joy.active && (action === 'left' || action === 'right' || action === 'up' || action === 'down')) return false;
+    for (const info of touch.pointers.values()) if (info.button === action) return true;
+    return false;
+  }
+
   function press(action) {
     if (!held[action]) queue.push(action);
     held[action] = true;
@@ -53,29 +86,41 @@ WL.input = (function () {
   function release(action) { held[action] = false; }
 
   function onKey(e, down) {
+    if (e.key === 'F11' || e.code === 'F11') {
+      if (down && !e.repeat) {
+        e.preventDefault();
+        queue.push('fullscreen');
+        anyKey = true;
+      }
+      return;
+    }
     const act = KEYMAP[e.key];
     if (!act) return;
-    // Prevent page scroll for game keys
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
-    if (down) { if (!e.repeat) press(act); else held[act] = true; }
-    else release(act);
+    if (down) {
+      if (e.repeat) { held[act] = true; return; }
+      keyDown[act] = true;
+      syncHeld(act);
+    } else {
+      keyDown[act] = false;
+      syncHeld(act);
+    }
   }
 
-  // Canvas coordinate mapping (set by main)
   let toCanvas = (cx, cy) => ({ x: cx, y: cy });
 
   function pointerDown(e) {
-    if (e.pointerType === 'mouse') {
-      // Mouse clicks count as "start"/any-key for menus
-      press('start'); queue.push('click');
-      setTimeout(() => release('start'), 50);
+    const p = toCanvas(e.clientX, e.clientY);
+    pointer.x = p.x; pointer.y = p.y; pointer.type = e.pointerType || 'mouse';
+    if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+      press('click');
+      press('start');
+      setTimeout(() => { release('start'); release('click'); }, 40);
       return;
     }
     touch.enabled = true;
-    const p = toCanvas(e.clientX, e.clientY);
     anyKey = true;
     queue.push('click');
-    // Buttons?
     for (const b of touch.buttons) {
       if (Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 8) {
         touch.pointers.set(e.pointerId, { x: p.x, y: p.y, button: b.id });
@@ -83,7 +128,6 @@ WL.input = (function () {
         return;
       }
     }
-    // Left 55% of screen = joystick
     if (p.x < WL.W * 0.55 && !touch.joy.active) {
       touch.joy.active = true;
       touch.joy.id = e.pointerId;
@@ -95,7 +139,11 @@ WL.input = (function () {
     touch.pointers.set(e.pointerId, { x: p.x, y: p.y, button: null });
   }
   function pointerMove(e) {
-    if (e.pointerType === 'mouse') return;
+    if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+      const p = toCanvas(e.clientX, e.clientY);
+      pointer.x = p.x; pointer.y = p.y; pointer.type = e.pointerType || 'mouse';
+      return;
+    }
     const p = toCanvas(e.clientX, e.clientY);
     const info = touch.pointers.get(e.pointerId);
     if (!info) return;
@@ -103,7 +151,6 @@ WL.input = (function () {
     if (touch.joy.active && touch.joy.id === e.pointerId) {
       touch.joy.x = p.x; touch.joy.y = p.y;
     } else if (info.button) {
-      // Sliding off/onto buttons: allow dragging between attack/jump etc.
       let over = null;
       for (const b of touch.buttons) if (Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 8) over = b.id;
       if (over && over !== info.button) {
@@ -114,7 +161,7 @@ WL.input = (function () {
     }
   }
   function pointerUp(e) {
-    if (e.pointerType === 'mouse') return;
+    if (e.pointerType === 'mouse' || e.pointerType === 'pen') return;
     const info = touch.pointers.get(e.pointerId);
     if (info) {
       if (info.button) release(info.button);
@@ -125,24 +172,114 @@ WL.input = (function () {
     }
   }
 
+  // Standard mapping: A jump, B fart, X attack, Y spray, LB/RB toolbox, Start pause.
+  // Triggers (6, 7) are analog and easy to brush, so they are not bound.
+  // Back (8) pauses. Start (9) confirms menus and, during a fight, opens pause.
+  const PAD_BUTTONS = {
+    0: 'jump', 1: 'fart', 2: 'attack', 3: 'special',
+    4: 'tool', 5: 'tool',
+    8: 'pause', 9: 'start',
+    12: 'up', 13: 'down', 14: 'left', 15: 'right'
+  };
+
+  function setPad(action, on) {
+    const was = !!padDown[action];
+    if (on === was) return;
+    padDown[action] = on;
+    syncHeld(action);
+  }
+
+  function pollGamepad() {
+    let pads = [];
+    try { pads = navigator.getGamepads ? navigator.getGamepads() : []; }
+    catch (e) { return; }
+    let pad = null;
+    if (gamepad.index != null && pads[gamepad.index] && pads[gamepad.index].connected) pad = pads[gamepad.index];
+    if (!pad) {
+      for (const p of pads) {
+        if (p && p.connected) { pad = p; break; }
+      }
+    }
+    gamepad.connected = !!pad;
+    if (!pad) {
+      gamepad.index = null; gamepad.x = 0; gamepad.y = 0; gamepad.stickX = 0; gamepad.stickY = 0;
+      for (const k in padDown) if (padDown[k]) setPad(k, false);
+      return;
+    }
+    gamepad.index = pad.index;
+    const b = pad.buttons;
+    const seen = {};
+    for (const i in PAD_BUTTONS) {
+      const action = PAD_BUTTONS[i];
+      const on = !!(b[i] && (b[i].pressed || b[i].value > 0.55));
+      if (on) seen[action] = true;
+    }
+    for (const i in PAD_BUTTONS) {
+      const action = PAD_BUTTONS[i];
+      // tool is on both LB and RB; don't release if the other is held
+      if (seen[action]) setPad(action, true);
+    }
+    for (const k in padDown) if (padDown[k] && !seen[k]) setPad(k, false);
+
+    let ax = pad.axes[0] || 0, ay = pad.axes[1] || 0;
+    const dead = 0.28;
+    const len = Math.hypot(ax, ay);
+    if (len < dead) { ax = 0; ay = 0; }
+    else {
+      const s = Math.min(1, (len - dead) / (1 - dead));
+      ax = (ax / len) * s; ay = (ay / len) * s;
+    }
+    gamepad.x = ax; gamepad.y = ay;
+    // Digital edges from the stick so menus move without the d-pad.
+    const sx = ax < -0.55 ? -1 : ax > 0.55 ? 1 : 0;
+    const sy = ay < -0.55 ? -1 : ay > 0.55 ? 1 : 0;
+    if (!seen.left && !seen.right) {
+      setPad('left', sx < 0);
+      setPad('right', sx > 0);
+    }
+    if (!seen.up && !seen.down) {
+      setPad('up', sy < 0);
+      setPad('down', sy > 0);
+    }
+    gamepad.stickX = sx; gamepad.stickY = sy;
+    if (b.some(btn => btn && (btn.pressed || btn.value > 0.5)) || ax || ay) anyKey = true;
+  }
+
+  function rumble(ms, strong, weak) {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const pad = gamepad.index != null ? pads[gamepad.index] : null;
+    const act = pad && (pad.vibrationActuator || pad.hapticActuators && pad.hapticActuators[0]);
+    if (!act) return;
+    const dur = ms || 70;
+    try {
+      if (act.playEffect) act.playEffect('dual-rumble', { duration: dur, strongMagnitude: strong || 0.4, weakMagnitude: weak || 0.2 });
+      else if (act.pulse) act.pulse(strong || 0.4, dur);
+    } catch (e) { /* desktop pads without haptics */ }
+  }
+
   function attach(canvas, mapFn) {
     toCanvas = mapFn;
     window.addEventListener('keydown', e => onKey(e, true));
     window.addEventListener('keyup', e => onKey(e, false));
-    window.addEventListener('blur', () => { for (const k in held) held[k] = false; });
+    window.addEventListener('blur', () => {
+      for (const k in keyDown) keyDown[k] = false;
+      for (const k in held) held[k] = false;
+      for (const k in padDown) padDown[k] = false;
+    });
+    window.addEventListener('gamepadconnected', e => { gamepad.connected = true; gamepad.index = e.gamepad.index; anyKey = true; });
+    window.addEventListener('gamepaddisconnected', () => { gamepad.connected = false; gamepad.index = null; });
     canvas.addEventListener('pointerdown', pointerDown);
     canvas.addEventListener('pointermove', pointerMove);
     canvas.addEventListener('pointerup', pointerUp);
     canvas.addEventListener('pointercancel', pointerUp);
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) {
-      // Show touch controls right away on touch-capable devices without a fine pointer
       if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) touch.enabled = true;
     }
   }
 
-  // Called once per frame by the game loop, before update
   function beginFrame() {
+    pollGamepad();
     for (const k in pressed) pressed[k] = false;
     for (const a of queue) pressed[a] = true;
     queue.length = 0;
@@ -154,6 +291,9 @@ WL.input = (function () {
     if (held.right) x += 1;
     if (held.up) y -= 1;
     if (held.down) y += 1;
+    // Analog stick only fills an axis the keyboard / d-pad isn't already driving.
+    if (!held.left && !held.right && gamepad.x) x = gamepad.x;
+    if (!held.up && !held.down && gamepad.y) y = gamepad.y;
     if (touch.joy.active) {
       const dx = touch.joy.x - touch.joy.ox, dy = touch.joy.y - touch.joy.oy;
       const dead = 8, max = 34;
@@ -161,7 +301,6 @@ WL.input = (function () {
       if (len > dead) {
         const s = Math.min(1, (len - dead) / (max - dead));
         x = (dx / len) * s; y = (dy / len) * s;
-        // snap to 8-way-ish feel
         if (Math.abs(x) < 0.3) x = 0;
         if (Math.abs(y) < 0.3) y = 0;
         x = Math.sign(x) * Math.min(1, Math.abs(x) * 1.6);
@@ -177,9 +316,12 @@ WL.input = (function () {
 
   function drawTouch(ctx, opts = {}) {
     if (!touch.enabled) return;
+    // On a desktop, keep the screen clear until a finger actually lands
+    // (touch laptops). Phones show the controls the whole time.
+    const pc = WL.display && WL.display.pc;
+    if (pc && !touch.joy.active && touch.pointers.size === 0) return;
     ctx.save();
     ctx.globalAlpha = 0.55;
-    // joystick
     if (touch.joy.active) {
       const j = touch.joy;
       WL.draw.circle(ctx, j.ox, j.oy, 34, 'rgba(255,255,255,0.12)', 'rgba(255,255,255,0.6)');
@@ -206,9 +348,9 @@ WL.input = (function () {
   }
 
   return {
-    attach, beginFrame, axis, drawTouch, consumeAny, layoutButtons,
-    held, pressed, touch,
-    get touchEnabled() { return touch.enabled; },
+    attach, beginFrame, axis, drawTouch, consumeAny, layoutButtons, rumble,
+    held, pressed, touch, pointer, gamepad,
+    get touchEnabled() { return touch.enabled && !(WL.display && WL.display.pc); },
     set touchEnabled(v) { touch.enabled = v; }
   };
 })();

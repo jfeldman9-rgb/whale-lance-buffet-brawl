@@ -9,6 +9,17 @@ WL.FLOOR_TOP = 205;     // highest walkable foot position (far)
 WL.FLOOR_BOTTOM = 345;  // lowest walkable foot position (near)
 WL.FONT = "'Press Start 2P', 'Courier New', monospace";
 
+/* Desktop presentation. main.js fills renderScale / pc from the window.
+   mode: 'auto' (sharp on a mouse+keyboard screen, classic otherwise),
+   'sharp' (supersampled, capped at 3x), 'classic' (1x, stretched). */
+WL.display = {
+  mode: 'auto',
+  pc: false,
+  renderScale: 1,
+  fullscreen: false,
+  resize: null
+};
+
 const U = WL.util = {
   clamp(v, a, b) { return v < a ? a : v > b ? b : v; },
   lerp(a, b, t) { return a + (b - a) * t; },
@@ -157,8 +168,15 @@ WL.draw = {
     }
   },
   scanlines(ctx, alpha) {
-    ctx.fillStyle = `rgba(0,0,0,${alpha || 0.12})`;
-    for (let y = 0; y < WL.H; y += 3) ctx.fillRect(0, y, WL.W, 1);
+    // One path instead of ~120 fillRect calls. Matters once the backing
+    // store is 2–3x for desktop.
+    ctx.save();
+    ctx.globalAlpha = alpha || 0.12;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    for (let y = 0; y < WL.H; y += 3) ctx.rect(0, y, WL.W, 1);
+    ctx.fill();
+    ctx.restore();
   },
   vignette(ctx, strength) {
     const g = ctx.createRadialGradient(WL.W / 2, WL.H / 2, WL.H * 0.45, WL.W / 2, WL.H / 2, WL.W * 0.72);
