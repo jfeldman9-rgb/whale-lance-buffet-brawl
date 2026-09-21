@@ -488,7 +488,7 @@ WL.sprites = (function () {
     ctx.save();
     ctx.translate(lean * 0.9, headY + cy + bob + 2);
     ctx.rotate(headTilt);
-    lanceHead(ctx, 0, 0, 34, { mood, noPhoto: o.noPhoto });
+    lanceHead(ctx, 0, 0, 38, { mood, noPhoto: o.noPhoto });
     ctx.restore();
     // front arm (in front of body)
     limb2(ctx, sh.x + lean * 0.6, sh.y + cy + bob, fe.x, fe.y + cy + bob, fh.x, fh.y + cy + bob, armW, LANCE.shirt, skin, 6, skin);
@@ -586,7 +586,9 @@ WL.sprites = (function () {
       drawLimbs(ctx, r, V, hipY, shoulderY, 5, (cy, lean) => {
         const hx = lean * 0.6, hy = shoulderY - 6 + cy;
         D.circle(ctx, hx, hy, 15, V.body, OUT);
-        // leaf layers
+        // yellow band so the little one doesn't read as a meatball
+        ctx.fillStyle = '#ffe14a'; ctx.fillRect(hx - 15, hy - 2, 30, 4);
+        ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; ctx.strokeRect(hx - 15, hy - 2, 30, 4);
         ctx.strokeStyle = V.dark; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(hx - 4, hy - 4, 9, 2.6, 5.2); ctx.stroke();
         ctx.beginPath(); ctx.arc(hx + 6, hy - 2, 7, 3.8, 6.0); ctx.stroke();
@@ -603,6 +605,14 @@ WL.sprites = (function () {
         // leaves on top
         for (const [lx, ly] of [[-8, -22], [0, -28], [8, -22]]) { D.ellipse(ctx, lx + lean * 0.6, shoulderY + ly + cy, 5, 8, '#5aa83a', OUT); }
         face(ctx, lean * 0.6, shoulderY - 2 + cy, e.pose, 3);
+        // the long reach has to be visible before it lands
+        const rib = (e.pose === 'kick' || e.pose === 'attack') ? 58 : (e.pose === 'windup' ? 16 : 42);
+        ctx.save();
+        ctx.translate(8 + lean * 0.4, shoulderY + 8 + cy);
+        ctx.rotate(e.pose === 'windup' ? -1.2 : (e.pose === 'kick' || e.pose === 'attack') ? 0.15 : -0.4);
+        D.fillRRect(ctx, 0, -2.5, rib, 5, 2, '#e7f6b0', OUT);
+        D.circle(ctx, rib, 0, 3.2, '#c6e86a', OUT);
+        ctx.restore();
       });
     },
     carrot(ctx, e, r) {
@@ -620,6 +630,17 @@ WL.sprites = (function () {
         // leaf hair
         for (const [lx, ly, a] of [[-6, -24, -0.4], [0, -28, 0], [6, -24, 0.4]]) { ctx.save(); ctx.translate(lx + lean * 0.6, shoulderY + ly + cy); ctx.rotate(a); D.ellipse(ctx, 0, 0, 3, 8, V.leaf, OUT); ctx.restore(); }
         face(ctx, lean * 0.6, shoulderY - 2 + cy, e.pose, 2.8);
+        if (e.pose === 'windup' || e.pose === 'spit' || e.pose === 'attack' || e.pose === 'dash') {
+          ctx.save();
+          ctx.translate(r.fh.x + 10, r.fh.y + cy);
+          ctx.fillStyle = '#e8eef8';
+          for (let i = 0; i < 4; i++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(2.2, -2); ctx.lineTo(0, -8); ctx.lineTo(-2.2, -2); ctx.closePath();
+            ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = 1.2; ctx.stroke();
+          }
+          ctx.restore();
+        }
       });
     },
     spinach(ctx, e, r) {
@@ -658,6 +679,8 @@ WL.sprites = (function () {
         const hx = lean * 0.9, hy = shoulderY - 16 + cy;
         for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; D.circle(ctx, hx + Math.cos(a) * 11, hy + Math.sin(a) * 9, 7, V.frill, OUT); }
         D.ellipse(ctx, hx, hy, 14, 12, V.body, OUT);
+        D.circle(ctx, r.fh.x, r.fh.y + cy, 7, '#c8322a', OUT);
+        D.circle(ctx, r.bh2.x, r.bh2.y + cy, 7, '#c8322a', OUT);
         face(ctx, hx, hy + 1, e.pose, 3.4, '#ffe0a0');
       });
     },
@@ -765,6 +788,7 @@ WL.sprites = (function () {
     switch (b.pose) {
       case 'walk': { const s = Math.sin(t * 7), c = Math.cos(t * 7); lf = { x: -22 + s * 14, y: Math.min(0, -c * 6) }; rf = { x: 22 - s * 14, y: Math.min(0, c * 6) }; fh.x -= s * 8; bh2.x += s * 8; break; }
       case 'slamWind': lean = -8; fe = { x: 30, y: -140 }; fh = { x: 10, y: -170 }; spoonAng = -2.4; break;
+      case 'jumpWind': crouch = 10; lean = -4; lf = { x: -28, y: 0 }; rf = { x: 28, y: 0 }; fe = { x: 36, y: -130 }; fh = { x: 20, y: -158 }; be = { x: -36, y: -120 }; bh2 = { x: -20, y: -150 }; spoonAng = -2.1; bob = Math.sin(t * 16) * 1.5; break;
       case 'slam': lean = 14; crouch = 10; fe = { x: 52, y: -80 }; fh = { x: 78, y: -30 }; spoonAng = 0.9; lf = { x: -30, y: 0 }; rf = { x: 30, y: 0 }; break;
       case 'jump': lf = { x: -20, y: -20 }; rf = { x: 20, y: -16 }; fe = { x: 48, y: -120 }; fh = { x: 50, y: -150 }; be = { x: -48, y: -120 }; bh2 = { x: -50, y: -150 }; spoonAng = -1.6; break;
       case 'land': crouch = 12; lf = { x: -34, y: 0 }; rf = { x: 34, y: 0 }; fe = { x: 50, y: -70 }; fh = { x: 66, y: -40 }; be = { x: -50, y: -70 }; bh2 = { x: -66, y: -40 }; break;
@@ -1001,26 +1025,56 @@ WL.sprites = (function () {
     ctx.restore();
   }
 
-  /* Volcano Fart cloud — expanding green rings + brown puffs + text */
+  /* Volcano Fart — shock rings (strokes, not full-screen fills) plus a dirty core. */
   function drawFartCloud(ctx, x, y, t, facing) {
     ctx.save();
-    const T = Math.min(1, t / 1.15);
-    const R = 40 + T * 520;
-    // rings
-    for (let i = 0; i < 4; i++) {
-      const rr = R * (1 - i * 0.18);
-      if (rr <= 0) continue;
-      ctx.globalAlpha = Math.max(0, 0.55 - T * 0.5 - i * 0.05);
-      ctx.beginPath(); ctx.ellipse(x, y - 20, rr, rr * 0.55, 0, 0, Math.PI * 2);
-      ctx.fillStyle = i % 2 ? '#7ad83a' : '#a7f04a'; ctx.fill();
+    const T = Math.min(1, t / 1.05);
+    for (let i = 0; i < 3; i++) {
+      const lt = t - i * 0.06;
+      if (lt <= 0) continue;
+      const R = 24 + lt * 520;
+      ctx.globalAlpha = Math.max(0, 0.9 - lt * 0.75);
+      ctx.strokeStyle = i === 0 ? '#f6ffe4' : (i === 1 ? '#c6ff4a' : '#5f8f22');
+      ctx.lineWidth = Math.max(1.5, 9 - lt * 7);
+      ctx.beginPath();
+      ctx.ellipse(x, y - 16, R, R * 0.36, 0, 0, Math.PI * 2);
+      ctx.stroke();
     }
-    // puffs
-    for (let i = 0; i < 26; i++) {
-      const a = i * 0.7 + t * 1.5, d = 20 + (i % 7) * 12 + T * 260;
-      const px = x + Math.cos(a) * d * (i % 2 ? 1 : 0.7), py = y - 30 + Math.sin(a) * d * 0.35 - T * 40 * (i % 3);
-      ctx.globalAlpha = Math.max(0, 0.85 - T);
-      D.circle(ctx, px, py, 8 + (i % 5) * 4 + T * 12, i % 3 === 0 ? '#5a8a2a' : (i % 3 === 1 ? '#8bd04a' : '#6b4a2a'));
+    ctx.globalAlpha = Math.max(0, 0.9 - t * 1.5);
+    D.circle(ctx, x - (facing || 1) * 8, y - 26, 16 + t * 36, '#e8ff9a');
+    ctx.globalAlpha = Math.max(0, 0.55 - t * 0.7);
+    D.circle(ctx, x - (facing || 1) * 14, y - 18, 10 + t * 22, '#c8a15a');
+    for (let i = 0; i < 16; i++) {
+      const a = i * 0.85 + t * 2.2, d = 16 + (i % 5) * 14 + T * 240;
+      const px = x + Math.cos(a) * d, py = y - 28 + Math.sin(a) * d * 0.32 - T * 30;
+      ctx.globalAlpha = Math.max(0, 0.8 - T);
+      D.circle(ctx, px, py, 6 + (i % 4) * 3, i % 3 === 0 ? '#6b4a2a' : (i % 3 === 1 ? '#8bd04a' : '#d8ff8a'));
     }
+    ctx.restore();
+  }
+
+  function drawSlash(ctx, x, y, facing, pose, u) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (facing < 0) ctx.scale(-1, 1);
+    ctx.globalAlpha = Math.max(0, 1 - u) * 0.95;
+    const heavy = pose === 'sweep';
+    const mid = pose === 'smash';
+    ctx.strokeStyle = heavy ? '#ffe14a' : (mid ? '#fff6d0' : '#fff');
+    ctx.lineWidth = heavy ? 6 : (mid ? 4.5 : 3);
+    ctx.lineCap = 'round';
+    const a0 = heavy ? -0.15 : -1.15;
+    const sweep = heavy ? 1.15 : 1.35;
+    const a = a0 + sweep * u;
+    const r = heavy ? 50 : 36;
+    ctx.beginPath();
+    ctx.arc(12, 0, r, a - 0.85, a + 0.15);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(12, 0, r - 6, a - 0.55, a);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -1032,5 +1086,5 @@ WL.sprites = (function () {
     ctx.restore();
   }
 
-  return { drawLance, lanceHead, drawLanceBust, drawEnemy, drawBoss, drawPickup, drawObject, drawProjectile, drawSprayCone, drawHitSpark, drawDust, drawFartCloud, drawPuddle, tool, VEG, OUT };
+  return { drawLance, lanceHead, drawLanceBust, drawEnemy, drawBoss, drawPickup, drawObject, drawProjectile, drawSprayCone, drawHitSpark, drawDust, drawFartCloud, drawSlash, drawPuddle, tool, VEG, OUT };
 })();

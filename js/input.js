@@ -301,8 +301,8 @@ WL.input = (function () {
       if (len > dead) {
         const s = Math.min(1, (len - dead) / (max - dead));
         x = (dx / len) * s; y = (dy / len) * s;
-        if (Math.abs(x) < 0.3) x = 0;
-        if (Math.abs(y) < 0.3) y = 0;
+        if (Math.abs(x) < 0.22) x = 0;
+        if (Math.abs(y) < 0.22) y = 0;
         x = Math.sign(x) * Math.min(1, Math.abs(x) * 1.6);
         y = Math.sign(y) * Math.min(1, Math.abs(y) * 1.6);
       }
@@ -339,7 +339,13 @@ WL.input = (function () {
         const down = held[b.id];
         ctx.globalAlpha = down ? 0.9 : 0.5;
         const disabled = b.id === 'fart' && opts.fartReady === false;
-        WL.draw.circle(ctx, b.x, b.y, b.r, disabled ? '#333' : b.color, 'rgba(255,255,255,0.8)');
+        const armed = b.id === 'fart' && opts.fartReady;
+        WL.draw.circle(ctx, b.x, b.y, b.r, disabled ? '#333' : (armed ? '#8f6' : b.color), 'rgba(255,255,255,0.8)');
+        if (armed) {
+          ctx.globalAlpha = 0.95;
+          ctx.strokeStyle = '#f4ffe0'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 6, 0, Math.PI * 2); ctx.stroke();
+        }
         ctx.globalAlpha = 0.95;
         WL.text.draw(ctx, b.label, b.x, b.y - 4, { size: 8, align: 'center', color: '#fff' });
       }

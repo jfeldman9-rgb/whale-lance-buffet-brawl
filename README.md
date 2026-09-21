@@ -4,6 +4,8 @@ A Streets of Rage-style side-scrolling beat-em-up. The A/C on the *Pride of Amer
 
 Plain HTML5 Canvas + vanilla JavaScript. No build step, no dependencies. Plays on a desktop with keyboard or a gamepad, and on a phone with touch.
 
+The showcase pass tightens the cabinet feel (hit-stop, a directional camera punch, attack buffering, floor tells before dashes and the froyo spoon) and rewrites the mid-fight voice: stage banners, enemy cards, combo ranks, Volcano Fart one-liners, and the ending. The ship temperature stays on the HUD so the cruise reads during the fight.
+
 On a mouse-and-keyboard screen the game draws at 2x or 3x (capped) so Lance and the decks stay sharp, letterboxed in the window. Phones stay on the classic 640×360 picture. Pause → Display switches Auto / Sharp / Classic, and the choice is remembered in this browser.
 
 ## Play
@@ -59,7 +61,7 @@ Then four stages aboard the ship, each ending with an A/C repair log and the shi
 
 | Stage | Ship space | Enemies |
 | --- | --- | --- |
-| 1 | Lido Deck buffet / pool deck (tutorial) | broccoli goons, brussels sprouts, celery stalkers |
+| 1 | Lido Deck buffet / pool deck (tutorial) — "the salad bar clocked in" | broccoli goons, brussels sprouts, celery stalkers |
 | 2 | A/C plant / pipe corridors (steam vents) | carrot ninjas, spinach thugs |
 | 3 | Spa & juice bar (elite greens) | kale bruisers, frozen yogurt cups |
 | 4 | Freezer / dessert station | **Giant Frozen Yogurt Cone** boss: swirl armor → sprinkle rain → meltdown puddles |
@@ -75,6 +77,7 @@ js/util.js            helpers, text and drawing primitives
 js/assets.js          image loader (every image is optional; drawn fallbacks exist)
 js/input.js           keyboard (WASD cluster + arcade keys), gamepad, touch
 js/audio.js           WebAudio synthesized SFX and chiptune sequencer (no audio files)
+js/voice.js           stage banners, enemy cards, combo ranks, fart lines, barks
 js/sprites.js         procedural sprites: Lance (drawn from photo refs), 7 enemy types, boss, items, FX
 js/entities.js        Player state machine, enemy AI, boss phases, pickups, projectiles
 js/levels.js          stage data, parallax backgrounds, waves, hazards, story text

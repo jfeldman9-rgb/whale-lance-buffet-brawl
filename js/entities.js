@@ -12,9 +12,9 @@
   /* Player                                                              */
   /* ------------------------------------------------------------------ */
   const ATTACKS = {
-    jab: { pose: 'jab', dur: 0.24, hitAt: 0.06, reach: 42, dmg: 5, kb: 40, next: 'smash', chainUntil: 0.5, sfx: 'hit' },
-    smash: { pose: 'smash', windPose: 'smashWind', windUntil: 0.1, dur: 0.32, hitAt: 0.12, reach: 46, dmg: 7, kb: 60, next: 'sweep', chainUntil: 0.6, sfx: 'clank' },
-    sweep: { pose: 'sweep', windPose: 'sweepWind', windUntil: 0.14, dur: 0.46, hitAt: 0.17, reach: 54, back: 34, dmg: 11, kb: 150, knockdown: true, next: null, chainUntil: 0, sfx: 'hitHeavy' }
+    jab: { pose: 'jab', dur: 0.18, hitAt: 0.045, reach: 44, dmg: 5, kb: 78, lunge: 120, next: 'smash', sfx: 'hit', stop: 'light' },
+    smash: { pose: 'smash', windPose: 'smashWind', windUntil: 0.08, dur: 0.26, hitAt: 0.09, reach: 48, dmg: 7, kb: 110, lunge: 90, next: 'sweep', sfx: 'clank', stop: 'light' },
+    sweep: { pose: 'sweep', windPose: 'sweepWind', windUntil: 0.1, dur: 0.36, hitAt: 0.12, reach: 58, back: 36, dmg: 11, kb: 190, lunge: 60, knockdown: true, next: null, sfx: 'hitHeavy', stop: 'heavy' }
   };
 
   class Player {
@@ -30,9 +30,11 @@
       this.state = 'idle'; this.stateT = 0; this.t = 0;
       this.invuln = 0; this.flash = 0;
       this.attack = null; this.hitDone = false; this.comboTimer = 0; this.nextCombo = 'jab';
+      this.bufferAttack = false; this.bufferFart = false;
       this.grab = null; this.grabHits = 0; this.grabT = 0;
       this.specialCd = 0; this.grabCd = 0;
-      this.hits = 0; this.comboCount = 0; this.comboDisplayT = 0;
+      this.hits = 0; this.comboCount = 0; this.comboDisplayT = 0; this.comboPop = 0;
+      this.lastTool = ''; this.lastToolT = 0; this.lowBarked = false;
       this.speed = 135;
       this.dead = false;
       this.won = false;
@@ -51,6 +53,8 @@
       if (this.grabCd > 0) this.grabCd -= dt;
       if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.nextCombo = 'jab'; }
       if (this.comboDisplayT > 0) { this.comboDisplayT -= dt; if (this.comboDisplayT <= 0) this.comboCount = 0; }
+      if (this.comboPop > 0) this.comboPop = Math.max(0, this.comboPop - dt * 3.2);
+      if (this.lastToolT > 0) this.lastToolT -= dt;
       const ax = inp.axis();
       const pressed = inp.pressed;
 
@@ -73,8 +77,8 @@
           if (ax.x !== 0) this.facing = ax.x > 0 ? 1 : -1;
           this.setState(ax.x || ax.y ? 'walk' : 'idle');
           if (this.state === 'walk' && this.stateT === 0) { /* keep t continuous */ }
-          if (pressed.fart && this.fart >= this.fartMax) { this.startFart(); break; }
-          if (pressed.attack) { this.startAttack(this.comboTimer > 0 ? this.nextCombo : 'jab'); break; }
+          if ((pressed.fart || this.bufferFart) && this.fart >= this.fartMax) { this.bufferFart = false; this.startFart(); break; }
+          if (pressed.attack || this.bufferAttack) { this.bufferAttack = false; this.startAttack(this.comboTimer > 0 ? this.nextCombo : 'jab'); break; }
           // SoR-style: walking into an enemy grabs it
           if (ax.x !== 0 && this.grabCd <= 0) {
             const target = this.findGrabTarget(22);
@@ -87,16 +91,19 @@
         }
         case 'attack': {
           const a = this.attack;
-          this.vx *= 0.7; this.vy = 0;
-          // small forward step on attack
-          if (this.stateT < 0.1) this.vx = this.facing * 40;
+          this.vy = 0;
+          // A short lunge, then plant. Decay is frame-rate independent.
+          if (this.stateT < 0.07) this.vx = this.facing * (a.lunge || 80);
+          else this.vx *= Math.pow(0.5, dt * 60);
+          if (pressed.attack) this.bufferAttack = true;
           if (!this.hitDone && this.stateT >= a.hitAt) { this.hitDone = true; this.doAttackHit(a); }
-          if (this.stateT >= a.dur) {
-            this.setState('idle');
-            this.comboTimer = a.next ? 0.5 : 0; this.nextCombo = a.next || 'jab';
-          } else if (a.next && this.stateT >= a.hitAt + 0.08 && pressed.attack) {
-            // early chain (buffer) — start next attack right after the hit lands
+          if (a.next && this.bufferAttack && this.hitDone && this.stateT >= a.hitAt + 0.02) {
+            this.bufferAttack = false;
             this.startAttack(a.next);
+          } else if (this.stateT >= a.dur) {
+            this.bufferAttack = false;
+            this.setState('idle');
+            this.comboTimer = a.next ? 0.42 : 0; this.nextCombo = a.next || 'jab';
           }
           break;
         }
@@ -106,7 +113,7 @@
           if (this.state === 'jump' && pressed.attack) { this.setState('jumpkick'); this.hitDone = false; WL.audio.sfx.swing(); }
           if (this.state === 'jumpkick' && !this.hitDone) {
             const hit = this.hitEnemies({ reach: 46, back: 0, dmg: 9, kb: 120, knockdown: true, zTol: 60 });
-            if (hit) { this.hitDone = true; WL.audio.sfx.hit(true); }
+            if (hit) { this.hitDone = true; WL.audio.sfx.hit(true); if (this.g.impact) this.g.impact(this.facing, 'heavy'); }
           }
           break;
         }
@@ -149,8 +156,8 @@
             else {
               this.grabHits++; this.setState('grabHit');
               e.hurt(6, this.x, { noInterrupt: true, kb: 0 }); this.registerHits(1);
-              this.g.fx.spark(e.x, e.y - 30); WL.audio.sfx.hit(false); this.g.hitstop = 0.04;
-              this.g.shake(2, 0.08);
+              this.g.fx.spark(e.x, e.y - 30); WL.audio.sfx.hit(false);
+              if (this.g.impact) this.g.impact(this.facing, 'light'); else { this.g.hitstop = 0.05; this.g.shake(2, 0.08); }
             }
           } else if (pressed.jump || pressed.tool) this.throwGrabbed();
           break;
@@ -204,7 +211,7 @@
 
     startAttack(name) {
       const a = ATTACKS[name];
-      this.attack = a; this.hitDone = false; this.comboTimer = 0;
+      this.attack = a; this.hitDone = false; this.comboTimer = 0; this.bufferAttack = false;
       this.setState('attack');
       WL.audio.sfx.swing();
     }
@@ -218,8 +225,10 @@
       }
       if (n) {
         if (a.sfx === 'hitHeavy') WL.audio.sfx.hit(true); else if (a.sfx === 'clank') WL.audio.sfx.clank(); else WL.audio.sfx.hit(false);
-        this.g.hitstop = a.knockdown ? 0.07 : 0.045;
-        this.g.shake(a.knockdown ? 4 : 1.5, 0.1);
+        if (this.g.impact) this.g.impact(this.facing, a.stop || 'light');
+        else { this.g.hitstop = a.knockdown ? 0.09 : 0.05; this.g.shake(a.knockdown ? 5 : 2, 0.1); }
+        this.lastTool = a.pose; this.lastToolT = 0.55;
+        if (a.knockdown && this.g.bark) this.g.bark('sweep');
       }
     }
     /** Apply damage to enemies in the melee box in front. Returns hit count. */
@@ -239,7 +248,9 @@
       return n;
     }
     registerHits(n) {
-      this.hits += n; this.comboCount += n; this.comboDisplayT = 1.6;
+      const before = this.comboCount;
+      this.hits += n; this.comboCount += n; this.comboDisplayT = 1.7; this.comboPop = 1;
+      if (this.g.onCombo) this.g.onCombo(before, this.comboCount);
     }
     findGrabTarget(range) {
       let best = null, bd = 1e9;
@@ -255,7 +266,7 @@
       e.getGrabbed(this);
       this.setState('grab');
       WL.audio.sfx.tape();
-      this.g.fx.text(this.x, this.y - 90, 'DUCT-TAPED!', '#ddd');
+      if (this.g.bark) this.g.bark('grab');
     }
     releaseGrab(broken) {
       const e = this.grab; this.grab = null; this.grabCd = 0.8;
@@ -266,10 +277,12 @@
       const e = this.grab; this.grab = null; this.grabCd = 0.5;
       if (e) { e.thrown(this.facing, this); this.registerHits(1); }
       this.setState('throw'); this.hitDone = true;
-      WL.audio.sfx.throwSfx(); this.g.shake(2, 0.1);
+      WL.audio.sfx.throwSfx();
+      if (this.g.impact) this.g.impact(this.facing, 'light'); else this.g.shake(2, 0.1);
+      if (this.g.bark) this.g.bark('throw');
     }
-    startSpray() { this.setState('spray'); this.hitDone = false; WL.audio.sfx.spray(); }
-    startThrow() { this.setState('throw'); this.hitDone = false; }
+    startSpray() { this.setState('spray'); this.hitDone = false; WL.audio.sfx.spray(); if (this.g.bark) this.g.bark('spray'); }
+    startThrow() { this.setState('throw'); this.hitDone = false; if (this.g.bark) this.g.bark('box'); }
     startFart() {
       if (this.grab) this.releaseGrab(false);
       this.setState('fartCharge'); this.invuln = 2;
@@ -278,14 +291,14 @@
     collect(p) {
       p.dead = true;
       switch (p.kind) {
-        case 'beans': this.addFart(35, 'BEANS! +35'); break;
-        case 'chili': this.addFart(50, 'CHILI! +50'); break;
-        case 'leftovers': this.addFart(25, 'LEFTOVERS +25'); break;
-        case 'coffee': this.addFart(15, 'COFFEE +15'); break;
-        case 'burger': this.heal(30, 'BURGER +30'); break;
-        case 'turkey': this.heal(60, 'TURKEY LEG +60'); break;
-        case 'chip': this.addScore(500); this.g.fx.text(this.x, this.y - 90, '+500', '#ffe14a'); WL.audio.sfx.pickup(); break;
-        case 'toolbox': this.hasToolbox = true; this.g.fx.text(this.x, this.y - 90, 'TOOLBOX!', '#f66'); WL.audio.sfx.pickup(); break;
+        case 'beans': this.addFart(35, 'NAVY BEANS +35'); break;
+        case 'chili': this.addFart(50, 'THE CHILI +50'); break;
+        case 'leftovers': this.addFart(25, 'LAST NIGHT +25'); break;
+        case 'coffee': this.addFart(15, 'DECK COFFEE +15'); break;
+        case 'burger': this.heal(30, 'A REAL BURGER +30'); break;
+        case 'turkey': this.heal(60, 'TURKEY. FINALLY. +60'); break;
+        case 'chip': this.addScore(500); this.g.fx.text(this.x, this.y - 90, 'CHIPS +500', '#ffe14a'); WL.audio.sfx.pickup(); break;
+        case 'toolbox': this.hasToolbox = true; this.g.fx.text(this.x, this.y - 90, 'BOX RECOVERED', '#f66'); WL.audio.sfx.pickup(); break;
       }
     }
     addFart(n, label) {
@@ -293,9 +306,9 @@
       this.fart = Math.min(this.fartMax, this.fart + n);
       this.g.fx.text(this.x, this.y - 90, label, '#9f3');
       WL.audio.sfx.chomp();
-      if (this.fart >= this.fartMax && was < this.fartMax) { this.g.fx.text(this.x, this.y - 106, 'VOLCANO FART READY!', '#5f5', 2.2); WL.audio.sfx.oneUp(); }
+      if (this.fart >= this.fartMax && was < this.fartMax) { this.g.fx.text(this.x, this.y - 106, 'METER\'S FULL. APOLOGIZE LATER.', '#b6ff4a', 2.2); WL.audio.sfx.oneUp(); }
     }
-    heal(n, label) { this.hp = Math.min(this.maxHp, this.hp + n); this.g.fx.text(this.x, this.y - 90, label, '#6f6'); WL.audio.sfx.heal(); }
+    heal(n, label) { this.hp = Math.min(this.maxHp, this.hp + n); if (this.hp > 55) this.lowBarked = false; this.g.fx.text(this.x, this.y - 90, label, '#6f6'); WL.audio.sfx.heal(); }
     addScore(n) { this.score += n; }
 
     hurt(dmg, fromX, knockdown) {
@@ -308,17 +321,19 @@
       this.comboCount = 0;
       if (this.hp <= 0) {
         this.hp = 0; this.setState('dead'); this.vx = dir * 120; this.vz = 200; this.z = 0.01;
-        WL.audio.sfx.hurt(); WL.audio.sfx.thud(); this.g.shake(6, 0.3);
+        WL.audio.sfx.hurt(); WL.audio.sfx.thud();
+        if (this.g.impact) this.g.impact(dir, 'heavy'); else this.g.shake(6, 0.3);
         return true;
       }
-      if (knockdown) { this.setState('down'); this.vx = dir * 140; this.vz = 190; this.z = 0.01; WL.audio.sfx.hurt(); this.g.shake(4, 0.2); }
-      else { this.setState('hurt'); this.vx = dir * 90; this.invuln = 0.15; WL.audio.sfx.hurt(); this.g.shake(2, 0.1); }
+      if (this.hp <= 28 && !this.lowBarked) { this.lowBarked = true; if (this.g.bark) this.g.bark('low'); }
+      if (knockdown) { this.setState('down'); this.vx = dir * 160; this.vz = 210; this.z = 0.01; WL.audio.sfx.hurt(); if (this.g.impact) this.g.impact(dir, 'heavy'); else this.g.shake(4, 0.2); }
+      else { this.setState('hurt'); this.vx = dir * 110; this.invuln = 0.15; WL.audio.sfx.hurt(); if (this.g.impact) this.g.impact(dir, 'light'); else this.g.shake(2, 0.1); }
       return true;
     }
 
     respawn(x, y) {
       this.hp = this.maxHp; this.x = x; this.y = y; this.z = 0; this.vx = this.vy = this.vz = 0;
-      this.setState('idle'); this.invuln = 2.5; this.grab = null; this.hasToolbox = true;
+      this.setState('idle'); this.invuln = 2.5; this.grab = null; this.hasToolbox = true; this.lowBarked = false; this.bufferAttack = false;
     }
 
     get height() { return 78; }
@@ -351,6 +366,11 @@
       WL.draw.shadow(ctx, sx, sy, 20, 6);
       const blink = this.invuln > 0 && !['down', 'dead', 'fart', 'fartCharge'].includes(this.state) && Math.floor(this.t * 20) % 2 === 0;
       S.drawLance(ctx, sx, sy - this.z, { pose: this.pose(), t: this.t, facing: this.facing, flash: this.flash > 0, alpha: blink ? 0.45 : 1 });
+      if (this.state === 'attack' && this.attack) {
+        const a = this.attack;
+        const u = (this.stateT - (a.windUntil || 0)) / Math.max(0.05, a.dur - (a.windUntil || 0));
+        if (u > 0 && u < 1) S.drawSlash(ctx, sx, sy - 48 - this.z, this.facing, a.pose, u);
+      }
       if (this.state === 'spray' && this.stateT > 0.08) S.drawSprayCone(ctx, sx + this.facing * 30, sy - 56, this.facing, this.t, 100);
       if (this.state === 'fartCharge') {
         // rumble lines
@@ -365,13 +385,13 @@
   /* Enemy                                                               */
   /* ------------------------------------------------------------------ */
   const ENEMY_DEFS = {
-    broccoli: { hp: 26, speed: 58, dmg: 7, reach: 36, score: 100, height: 66, windup: 0.42, attackDur: 0.3, ranged: false, name: 'BROCCOLI GOON' },
-    sprout: { hp: 12, speed: 95, dmg: 5, reach: 26, score: 50, height: 40, windup: 0.3, attackDur: 0.25, roll: true, name: 'BRUSSELS SPROUT' },
-    celery: { hp: 22, speed: 62, dmg: 8, reach: 56, score: 120, height: 84, windup: 0.45, attackDur: 0.32, name: 'CELERY STALKER' },
-    carrot: { hp: 24, speed: 125, dmg: 8, reach: 34, score: 150, height: 62, windup: 0.28, attackDur: 0.26, dash: true, ranged: 'shuriken', name: 'CARROT NINJA' },
-    spinach: { hp: 48, speed: 46, dmg: 12, reach: 40, score: 200, height: 70, windup: 0.6, attackDur: 0.35, knockdown: true, armor: true, name: 'SPINACH THUG' },
-    kale: { hp: 75, speed: 52, dmg: 14, reach: 44, score: 300, height: 84, windup: 0.55, attackDur: 0.35, knockdown: true, armor: true, charge: true, name: 'KALE BRUISER' },
-    froyo: { hp: 32, speed: 72, dmg: 6, reach: 32, score: 400, height: 60, windup: 0.35, attackDur: 0.3, ranged: 'sprinkle', keepAway: true, name: 'FROZEN YOGURT' }
+    broccoli: { hp: 26, speed: 58, dmg: 7, reach: 36, score: 100, height: 66, windup: 0.42, attackDur: 0.28, ranged: false, plate: '#3f8f28', name: 'BROCCOLI GOON' },
+    sprout: { hp: 12, speed: 95, dmg: 5, reach: 26, score: 50, height: 40, windup: 0.32, attackDur: 0.22, roll: true, plate: '#e2d24a', name: 'BRUSSELS SPROUT' },
+    celery: { hp: 22, speed: 62, dmg: 8, reach: 56, score: 120, height: 84, windup: 0.48, attackDur: 0.3, plate: '#e7f6b0', name: 'CELERY STALKER' },
+    carrot: { hp: 24, speed: 125, dmg: 8, reach: 34, score: 150, height: 62, windup: 0.32, attackDur: 0.24, dash: true, ranged: 'shuriken', plate: '#f08a1e', name: 'CARROT NINJA' },
+    spinach: { hp: 48, speed: 46, dmg: 12, reach: 40, score: 200, height: 70, windup: 0.62, attackDur: 0.32, knockdown: true, armor: true, plate: '#2a4ad0', name: 'SPINACH THUG' },
+    kale: { hp: 75, speed: 52, dmg: 14, reach: 44, score: 300, height: 84, windup: 0.58, attackDur: 0.32, knockdown: true, armor: true, charge: true, plate: '#143528', name: 'KALE BRUISER' },
+    froyo: { hp: 32, speed: 72, dmg: 6, reach: 32, score: 400, height: 60, windup: 0.38, attackDur: 0.28, ranged: 'sprinkle', keepAway: true, plate: '#f7a7c7', name: 'FROZEN YOGURT' }
   };
 
   class Enemy {
@@ -401,7 +421,7 @@
     }
 
     get hittable() { return !this.dead && !['down', 'dead', 'thrown', 'spawn'].includes(this.state) && this.z < 80; }
-    get grabbable() { return !this.dead && !this.isBoss && ['approach', 'wait', 'stunned', 'hurt', 'windup', 'idle'].includes(this.state) && this.z <= 0; }
+    get grabbable() { return !this.dead && !this.isBoss && ['approach', 'wait', 'stunned', 'hurt', 'windup', 'prime', 'idle'].includes(this.state) && this.z <= 0; }
     setState(s) { this.state = s; this.stateT = 0; }
 
     update(dt) {
@@ -428,6 +448,15 @@
         case 'windup':
           this.vx = 0; this.vy = 0;
           if (this.stateT >= this.def.windup) { this.setState('attack'); this.hitDone = false; }
+          break;
+        case 'prime':
+          // Locked facing from the moment the tell started. The floor mark is the contract.
+          this.vx = 0; this.vy = 0;
+          if (this.stateT >= (this.primeDur || 0.28)) {
+            this.setState(this.pending || 'approach');
+            this.hitDone = false;
+            if (this.pending === 'dash' || this.pending === 'charge') WL.audio.sfx.swing();
+          }
           break;
         case 'attack': {
           this.vx = this.facing * 30; this.vy = 0;
@@ -516,10 +545,18 @@
         this.setState('spit'); this.hitDone = false; return;
       }
       // Dash / roll / charge openers
-      if (!pDown && this.attackCd <= 0 && Math.abs(dy) < 14 && adx > 70 && adx < 190 && this.g.attackers() < 2) {
-        if (this.def.dash && U.chance(0.7)) { this.setState('dash'); this.hitDone = false; WL.audio.sfx.swing(); return; }
-        if (this.def.roll && U.chance(0.6)) { this.setState('roll'); this.hitDone = false; return; }
-        if (this.def.charge && U.chance(0.5)) { this.setState('charge'); this.hitDone = false; WL.audio.sfx.bossRoar(); return; }
+      if (!pDown && this.attackCd <= 0 && Math.abs(dy) < 16 && adx > 70 && adx < 200 && this.g.attackers() < 2) {
+        let pending = null;
+        if (this.def.dash && U.chance(0.7)) pending = 'dash';
+        else if (this.def.roll && U.chance(0.6)) pending = 'roll';
+        else if (this.def.charge && U.chance(0.5)) pending = 'charge';
+        if (pending) {
+          this.pending = pending;
+          this.primeDur = pending === 'roll' ? 0.22 : pending === 'charge' ? 0.38 : 0.28;
+          this.setState('prime');
+          if (pending === 'charge') WL.audio.sfx.bossRoar(); else WL.audio.sfx.blip();
+          return;
+        }
       }
 
       // desired standoff position
@@ -572,7 +609,7 @@
       if (opts.stun) { this.stun = opts.stun; this.setState('stunned'); this.vx = dir * 20; WL.audio.sfx.blip(); this.g.fx.text(this.x, this.y - this.height - 10, 'FROZEN!', '#8ff'); return; }
       if (opts.noInterrupt || this.state === 'grabbed') return;
       const armored = this.def.armor && ['windup', 'attack', 'charge'].includes(this.state) && !opts.knockdown;
-      if (armored) { this.g.fx.text(this.x, this.y - this.height - 6, 'ARMOR', '#aaa', 0.6); return; }
+      if (armored) { this.g.fx.text(this.x, this.y - this.height - 6, 'TOO LEAFY', '#c8e89a', 0.6); return; }
       if (opts.knockdown) { this.setState('down'); this.vx = dir * (opts.kb || 120); this.vz = 200; this.z = 0.01; }
       else { this.setState('hurt'); this.vx = dir * (opts.kb || 50); }
     }
@@ -580,8 +617,12 @@
       this.dead = true; this.setState('dead'); this.vx = (dir || 1) * 120; this.vz = 220; this.z = Math.max(this.z, 0.01);
       const pts = this.def.score * (this.elite ? 2 : 1);
       this.g.player.addScore(pts);
-      this.g.fx.text(this.x, this.y - this.height, this.type === 'froyo' ? `+${pts} FROYO HATE x2` : `+${pts}`, this.type === 'froyo' ? '#f9c' : '#ffe14a');
+      this.g.fx.text(this.x, this.y - this.height, this.type === 'froyo' ? `+${pts}  STILL GROSS` : `+${pts}`, this.type === 'froyo' ? '#f9c' : '#ffe14a');
       if (this.type === 'froyo') this.g.player.addScore(pts);
+      if (!this.isBoss && this.g.bark && !(this.g.fartT >= 0)) {
+        if (this.type === 'froyo') this.g.bark('froyo');
+        else if (this.elite) this.g.bark('elite');
+      }
       WL.audio.sfx.enemyDie();
       this.g.fx.burst(this.x, this.y - this.height / 2, this.type);
       // drops
@@ -607,7 +648,7 @@
       switch (this.state) {
         case 'approach': return (Math.abs(this.vx) + Math.abs(this.vy) > 8) ? 'walk' : 'idle';
         case 'wait': case 'recover': case 'getup': case 'spawn': return 'idle';
-        case 'windup': return 'windup';
+        case 'windup': case 'prime': return 'windup';
         case 'attack': return this.def.reach > 50 ? 'kick' : 'attack';
         case 'dash': case 'charge': return 'dash';
         case 'roll': return 'roll';
@@ -623,12 +664,15 @@
     }
     draw(ctx, camX) {
       const sx = Math.round(this.x - camX), sy = Math.round(this.y);
+      const plate = this.def.plate || '#888';
+      ctx.save();
+      ctx.globalAlpha = this.elite ? 0.9 : 0.72;
+      WL.draw.ellipse(ctx, sx, sy + 1, Math.max(12, this.height * 0.24), 5.5, plate, this.elite ? '#ffe14a' : '#141428');
+      ctx.restore();
       WL.draw.shadow(ctx, sx, sy, this.height * 0.28, this.height * 0.09);
       const alpha = this.dead ? Math.max(0, 1 - (this.stateT - 0.4) * 2) : (this.state === 'spawn' ? this.stateT * 2 : 1);
       S.drawEnemy(ctx, sx, sy - this.z, { type: this.type, pose: this.pose(), t: this.t, facing: this.facing, flash: this.flash > 0 || (this.dead && Math.floor(this.t * 30) % 2 === 0), alpha, taped: this.state === 'grabbed', stunTint: this.state === 'stunned' });
-      if (this.elite) WL.text.draw(ctx, 'ELITE', sx, sy - this.z - this.height - 14, { size: 6, align: 'center', color: '#fc6' });
-      // windup telegraph
-      if (this.state === 'windup' && Math.floor(this.stateT * 16) % 2 === 0) WL.text.draw(ctx, '!', sx, sy - this.z - this.height - 16, { size: 12, align: 'center', color: '#f44' });
+      if (this.elite) WL.text.draw(ctx, 'ELITE', sx, sy - this.z - this.height - 14, { size: 6, align: 'center', color: '#fc6', stroke: '#000', strokeWidth: 2 });
     }
   }
 
@@ -662,7 +706,7 @@
         this.phase = np; this.g.onBossPhase(np);
         this.setState('stagger'); this.staggerT = 1.4;
       }
-      if (this.phase === 1 && this.armorHp <= 0 && this.state !== 'stagger') { this.armorRegen += dt; if (this.armorRegen > 7) { this.armorHp = this.armorMax; this.armorRegen = 0; this.g.fx.text(this.x, this.y - 170, 'SWIRL ARMOR RESTORED', '#bff'); } }
+      if (this.phase === 1 && this.armorHp <= 0 && this.state !== 'stagger') { this.armorRegen += dt; if (this.armorRegen > 7) { this.armorHp = this.armorMax; this.armorRegen = 0; this.g.fx.text(this.x, this.y - 170, 'SHE RE-FROZE. RUDE.', '#bff', 1.6); } }
 
       if (this.z > 0 || this.vz !== 0) {
         this.vz -= GRAV * dt; this.z += this.vz * dt;
@@ -687,15 +731,20 @@
           const ex = wantX - this.x, ey = dy;
           const dist = Math.hypot(ex, ey);
           if (dist > 4) { this.vx = ex / dist * this.speed * (this.phase === 3 ? 1.5 : 1); this.vy = ey / dist * this.speed * 0.7; } else { this.vx = 0; this.vy = 0; }
-          if (this.phase >= 3) { this.puddleT += dt; if (this.puddleT > 2.2) { this.puddleT = 0; this.g.puddles.push({ x: this.x, y: this.y + 4, r: 34, t: 0, life: 9 }); } }
+          if (this.phase >= 3) { this.puddleT += dt; if (this.puddleT > 2.4) { this.puddleT = 0; this.g.puddles.push({ x: this.x, y: this.y + 4, r: 34, t: 0, life: 9, arm: 0.55 }); } }
           if (this.attackCd <= 0) {
             const pDown = ['down', 'dead', 'gone'].includes(p.state);
             if (pDown) { this.attackCd = 0.6; break; }
-            if (adx < 110 && Math.abs(dy) < 30) { this.setState('slamWind'); this.hitDone = false; break; }
+            if (adx < 110 && Math.abs(dy) < 30) { this.setState('slamWind'); this.hitDone = false; WL.audio.sfx.blip(); break; }
             const roll = Math.random();
             if (this.phase >= 2 && roll < 0.4) { this.setState('rainWind'); this.hitDone = false; WL.audio.sfx.bossRoar(); break; }
-            if (this.phase >= 2 && roll < 0.75 && adx > 90) { this.setState('jump'); this.vz = 420; this.z = 0.01; this.jumpTargetX = p.x; this.jumpTargetY = p.y; WL.audio.sfx.jump(); break; }
-            if (this.phase >= 2 && !this.summoned && roll >= 0.75) { this.summoned = true; this.setState('rainWind'); this.hitDone = false; this.summonNext = true; break; }
+            if (this.phase >= 2 && roll < 0.75 && adx > 90) {
+              this.jumpTargetX = p.x; this.jumpTargetY = U.clamp(p.y, WL.FLOOR_TOP, WL.FLOOR_BOTTOM);
+              this.setState('jumpWind');
+              WL.audio.sfx.blip();
+              break;
+            }
+            if (this.phase >= 2 && !this.summoned && roll >= 0.75) { this.summoned = true; this.setState('rainWind'); this.hitDone = false; this.summonNext = true; WL.audio.sfx.bossRoar(); break; }
             this.attackCd = 0.4;
           }
           break;
@@ -704,20 +753,26 @@
         case 'slam': {
           this.vx = 0; this.vy = 0;
           if (!this.hitDone && this.stateT >= 0.1) {
-            this.hitDone = true; WL.audio.sfx.slam(); this.g.shake(7, 0.3);
+            this.hitDone = true; WL.audio.sfx.slam();
+            if (this.g.impact) this.g.impact(this.facing, 'boss'); else this.g.shake(7, 0.3);
             this.g.fx.dust(this.x + this.facing * 70, this.y, 22);
             const ddx = (p.x - this.x) * this.facing;
             if (ddx > -10 && ddx < 130 && Math.abs(p.y - this.y) < 40 && p.z < 50) { if (p.hurt(this.def.dmg, this.x, true)) this.g.fx.spark(p.x, p.y - 50, true); }
-            if (this.phase >= 3) this.g.puddles.push({ x: this.x + this.facing * 70, y: this.y + 4, r: 30, t: 0, life: 8 });
+            if (this.phase >= 3) this.g.puddles.push({ x: this.x + this.facing * 70, y: this.y + 4, r: 30, t: 0, life: 8, arm: 0.2 });
           }
           if (this.stateT >= 0.5) { this.setState('recover'); this.attackCd = this.phase === 3 ? 0.7 : 1.3; }
           break;
         }
+        case 'jumpWind':
+          this.vx = 0; this.vy = 0;
+          this.facing = (this.jumpTargetX || p.x) >= this.x ? 1 : -1;
+          if (this.stateT >= 0.42) { this.setState('jump'); this.vz = 460; this.z = 0.01; WL.audio.sfx.jump(); }
+          break;
         case 'jump': {
-          // steer toward target
+          // The mark was locked in jumpWind. He commits to it.
           const tx = this.jumpTargetX, ty = this.jumpTargetY;
-          this.vx = U.clamp((tx - this.x) * 2.2, -260, 260); this.vy = U.clamp((ty - this.y) * 2, -120, 120);
-          this.facing = p.x > this.x ? 1 : -1;
+          this.vx = U.clamp((tx - this.x) * 2.4, -280, 280); this.vy = U.clamp((ty - this.y) * 2.1, -140, 140);
+          this.facing = tx >= this.x ? 1 : -1;
           break;
         }
         case 'land': this.vx = 0; this.vy = 0; if (this.stateT >= 0.7) { this.setState('recover'); this.attackCd = 1.0; } break;
@@ -729,7 +784,7 @@
               this.summonNext = false;
               this.g.spawnEnemy('froyo', this.g.camX + 40, U.rand(WL.FLOOR_TOP + 20, WL.FLOOR_BOTTOM - 20), { hpMult: 0.8 });
               this.g.spawnEnemy('froyo', this.g.camX + WL.W - 40, U.rand(WL.FLOOR_TOP + 20, WL.FLOOR_BOTTOM - 20), { hpMult: 0.8 });
-              this.g.fx.text(this.x, this.y - 170, 'FROYO BACKUP!', '#f9c');
+              this.g.fx.text(this.x, this.y - 170, 'CUP-SIZED BACKUP', '#f9c', 1.6);
             } else {
               const n = this.phase === 3 ? 12 : 8;
               for (let i = 0; i < n; i++) {
@@ -738,7 +793,7 @@
                 this.g.projectiles.push(new Projectile(this.g, { kind: 'bigsprinkle', owner: 'enemy', x: tx, y: ty, z: 340 + i * 30, vx: 0, vz: -20, dmg: 7, knockdown: true, falling: true, color: U.pick(['#ff4a4a', '#4ad0ff', '#ffe14a', '#4aff88', '#ff8ae0']), rot: U.rand(0, 3) }));
               }
               WL.audio.sfx.throwSfx();
-              this.g.fx.text(this.x, this.y - 170, 'SPRINKLE RAIN!', '#fc6');
+              this.g.fx.text(this.x, this.y - 170, 'TOPPINGS. FROM ABOVE.', '#fc6', 1.6);
             }
           }
           if (this.stateT >= 1.3) { this.setState('recover'); this.attackCd = 1.4; }
@@ -753,11 +808,13 @@
       this.x = U.clamp(this.x, this.g.camX + 40, this.g.camX + WL.W - 40);
     }
     landHit() {
-      WL.audio.sfx.slam(); this.g.shake(9, 0.35); this.g.fx.dust(this.x, this.y, 30);
+      WL.audio.sfx.slam();
+      if (this.g.impact) this.g.impact(this.facing, 'boss'); else this.g.shake(9, 0.35);
+      this.g.fx.dust(this.x, this.y, 30);
       const p = this.g.player;
-      if (Math.hypot(p.x - this.x, (p.y - this.y) * 1.6) < 95 && p.z < 60) { if (p.hurt(12, this.x, true)) this.g.fx.spark(p.x, p.y - 50, true); }
+      if (Math.hypot(p.x - this.x, (p.y - this.y) * 1.6) < 78 && p.z < 60) { if (p.hurt(12, this.x, true)) this.g.fx.spark(p.x, p.y - 50, true); }
       for (const e of this.g.enemies) if (e !== this && e.hittable && Math.hypot(e.x - this.x, (e.y - this.y) * 1.6) < 95) e.hurt(10, this.x, { knockdown: true });
-      if (this.phase >= 3) this.g.puddles.push({ x: this.x, y: this.y + 4, r: 44, t: 0, life: 9 });
+      if (this.phase >= 3) this.g.puddles.push({ x: this.x, y: this.y + 4, r: 44, t: 0, life: 9, arm: 0.35 });
     }
     hurt(dmg, fromX, opts = {}) {
       if (this.dead || this.state === 'intro') return;
@@ -765,8 +822,8 @@
       if (this.armor > 0) {
         real = Math.round(dmg * 0.35);
         this.armorHp -= dmg;
-        if (this.armorHp <= 0) { this.armorHp = 0; this.armorRegen = 0; this.setState('stagger'); this.staggerT = 3.2; this.g.fx.text(this.x, this.y - 170, 'SWIRL ARMOR BROKEN!', '#fff', 1.5); WL.audio.sfx.break(); this.g.shake(5, 0.3); }
-        else this.g.fx.text(this.x + U.rand(-20, 20), this.y - 150, 'CLINK', '#bff', 0.5);
+        if (this.armorHp <= 0) { this.armorHp = 0; this.armorRegen = 0; this.setState('stagger'); this.staggerT = 3.2; this.g.fx.text(this.x, this.y - 170, 'THE SWIRL GIVES UP', '#fff', 1.6); WL.audio.sfx.break(); if (this.g.impact) this.g.impact(1, 'heavy'); else this.g.shake(5, 0.3); }
+        else this.g.fx.text(this.x + U.rand(-20, 20), this.y - 150, 'TING', '#bff', 0.45);
       }
       if (opts.fart) real = dmg;
       this.hp -= real; this.flash = 0.1;
@@ -785,7 +842,7 @@
       switch (this.state) {
         case 'approach': return Math.abs(this.vx) + Math.abs(this.vy) > 5 ? 'walk' : 'idle';
         case 'slamWind': return 'slamWind'; case 'slam': return 'slam';
-        case 'jump': return 'jump'; case 'land': return 'land';
+        case 'jumpWind': return 'jumpWind'; case 'jump': return 'jump'; case 'land': return 'land';
         case 'rainWind': return 'rainWind';
         case 'hurt': return 'hurt'; case 'stagger': return 'stagger';
         case 'dead': return 'dead';
@@ -883,7 +940,7 @@
             this.hitList.add(e); this.hits++;
             e.hurt(this.dmg, this.x - Math.sign(this.vx) * 10, { knockdown: this.knockdown, kb: 110 });
             this.g.fx.spark(e.x, e.y - 40, true); WL.audio.sfx.hit(true); p.registerHits(1);
-            this.g.hitstop = 0.04;
+            if (this.g.impact) this.g.impact(Math.sign(this.vx) || 1, 'heavy'); else this.g.hitstop = 0.06;
             if (this.hits >= this.pierce) { this.expire(); return; }
           }
         }
@@ -906,10 +963,24 @@
     draw(ctx, camX) {
       const sx = Math.round(this.x - camX), sy = Math.round(this.y);
       if (this.falling) {
-        // target marker + shadow grows as it approaches
-        const k = U.clamp(1 - this.z / 400, 0.2, 1);
-        ctx.save(); ctx.globalAlpha = 0.6; WL.draw.ellipse(ctx, sx, sy, 14 * k + 4, 5 * k + 1.5, 'rgba(0,0,0,0.45)'); ctx.restore();
-        if (this.z > 330) return; // still off the top of the screen
+        // Red ring from the moment it leaves the machine, so the rain is a tell.
+        const k = U.clamp(1 - this.z / 420, 0.25, 1);
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = this.z > 70 ? '#ff3355' : '#ffd0e0';
+        ctx.lineWidth = this.z > 70 ? 2 : 3;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, 10 + 18 * k, 4 + 6 * k, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        if (Math.floor((this.t || 0) * 10) % 2 === 0 && this.z > 70) {
+          ctx.strokeStyle = '#fff';
+          ctx.beginPath();
+          ctx.moveTo(sx - 6, sy - 3); ctx.lineTo(sx + 6, sy + 3);
+          ctx.moveTo(sx + 6, sy - 3); ctx.lineTo(sx - 6, sy + 3);
+          ctx.stroke();
+        }
+        ctx.restore();
+        if (this.z > 330) return;
       } else WL.draw.shadow(ctx, sx, sy, 8, 3);
       S.drawProjectile(ctx, sx, sy - this.z, this);
     }

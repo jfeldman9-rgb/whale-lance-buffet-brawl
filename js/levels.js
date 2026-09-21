@@ -33,6 +33,14 @@
     for (let x = px; x < W + 40; x += 40) ctx.fillRect(x, 150, 4, 34);
     // deck back wall / superstructure with windows
     ctx.fillStyle = '#e9ecef'; ctx.fillRect(0, 118, W, 0);
+    // lifebuoy on the rail — the ship should read even in a scrum
+    const buoy = 420 - camX * 0.5;
+    if (buoy > -20 && buoy < W + 20) {
+      D.circle(ctx, buoy, 160, 11, '#e23b2f', '#fff');
+      D.circle(ctx, buoy, 160, 4, '#f4f4f8', '#c8322a');
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(buoy - 8, 160); ctx.lineTo(buoy + 8, 160); ctx.moveTo(buoy, 152); ctx.lineTo(buoy, 168); ctx.stroke();
+    }
     // pool (mid)
     const poolX = 240 - camX * 0.5;
     D.fillRRect(ctx, poolX, 176, 220, 14, 4, '#39b6e8', '#dcdcdc');
@@ -60,7 +68,8 @@
       D.fillRRect(ctx, x, 156, 260, 34, 3, '#8a5a2a', '#3a2410');
       ctx.fillStyle = '#c8322a'; ctx.fillRect(x, 150, 260, 8); ctx.fillStyle = '#fff'; for (let i = 0; i < 13; i++) ctx.fillRect(x + i * 20, 150, 10, 8);
       for (let i = 0; i < 6; i++) { D.ellipse(ctx, x + 24 + i * 40, 157, 14, 5, '#e0e4ea', '#555'); ctx.fillStyle = ['#e8c060', '#c8843a', '#a05a2a', '#e04040', '#f0e0a0', '#7ab040'][i]; ctx.beginPath(); ctx.ellipse(x + 24 + i * 40, 154, 10, 4, 0, Math.PI, 0); ctx.fill(); }
-      T.draw(ctx, 'LIDO BUFFET', x + 130, 138, { size: 8, align: 'center', color: '#fff' });
+      T.draw(ctx, 'PRIDE OF AMERICA', x + 130, 132, { size: 5, align: 'center', color: '#1b3f8a' });
+      T.draw(ctx, 'LIDO BUFFET', x + 130, 140, { size: 8, align: 'center', color: '#fff' });
     }
     // deck floor: planks
     const fg = ctx.createLinearGradient(0, WALL_BASE, 0, H); fg.addColorStop(0, '#c99a5b'); fg.addColorStop(1, '#a5783f');
@@ -115,7 +124,7 @@
     }
     // signs
     const sx = 300 - camX * 0.6;
-    for (let k = 0; k < 4; k++) { const x = sx + k * 900; if (x > -200 && x < W + 50) { D.fillRRect(ctx, x, 118, 150, 28, 2, '#e8c000', '#0e131b'); T.draw(ctx, 'A/C PLANT - DECK 4', x + 75, 124, { size: 6, align: 'center', color: '#222', shadow: false }); T.draw(ctx, 'AUTHORIZED ONLY', x + 75, 134, { size: 6, align: 'center', color: '#222', shadow: false }); } }
+    for (let k = 0; k < 4; k++) { const x = sx + k * 900; if (x > -200 && x < W + 50) { D.fillRRect(ctx, x, 118, 170, 28, 2, '#e8c000', '#0e131b'); T.draw(ctx, 'A/C PLANT - DECK 4', x + 85, 124, { size: 6, align: 'center', color: '#222', shadow: false }); T.draw(ctx, 'NO CARROTS. SERIOUSLY.', x + 85, 134, { size: 5, align: 'center', color: '#222', shadow: false }); } }
     // grated metal floor
     const fg = ctx.createLinearGradient(0, WALL_BASE, 0, H); fg.addColorStop(0, '#48525f'); fg.addColorStop(1, '#2f3741');
     ctx.fillStyle = fg; ctx.fillRect(0, WALL_BASE, W, H - WALL_BASE);
@@ -162,7 +171,7 @@
       // blenders and fruit
       for (let i = 0; i < 4; i++) { const jx = x + 30 + i * 56; D.fillRRect(ctx, jx - 8, 122, 16, 28, 2, ['#8bd44a', '#f08a1e', '#e8407a', '#f0d040'][i], '#345'); D.fillRRect(ctx, jx - 10, 118, 20, 5, 1, '#ddd', '#345'); }
       T.draw(ctx, 'JUICE BAR', x + 120, 158, { size: 7, align: 'center', color: '#fff' });
-      T.draw(ctx, 'KALE SMOOTHIE $14', x + 120, 170, { size: 5, align: 'center', color: '#ffe' });
+      T.draw(ctx, 'KALE $14. LANCE: NO.', x + 120, 170, { size: 5, align: 'center', color: '#ffe' });
     }
     // hot tub steam
     const hx = 560 - camX * 0.8;
@@ -202,7 +211,7 @@
       } else if (kind === 2) { // hanging icicles
         for (let k = 0; k < 6; k++) { ctx.fillStyle = '#cfe8ff'; ctx.beginPath(); ctx.moveTo(x + k * 12, 48); ctx.lineTo(x + k * 12 + 8, 48); ctx.lineTo(x + k * 12 + 4, 60 + (k % 3) * 8); ctx.closePath(); ctx.fill(); }
       } else { // freezer sign
-        D.fillRRect(ctx, x - 44, 100, 88, 24, 3, '#e8e8e8', '#101a2e'); T.draw(ctx, 'DESSERT STATION', x, 104, { size: 5, align: 'center', color: '#222', shadow: false }); T.draw(ctx, '-40F  KEEP CLOSED', x, 113, { size: 5, align: 'center', color: '#c22', shadow: false });
+        D.fillRRect(ctx, x - 52, 100, 104, 24, 3, '#e8e8e8', '#101a2e'); T.draw(ctx, 'DESSERT STATION', x, 104, { size: 5, align: 'center', color: '#222', shadow: false }); T.draw(ctx, 'SMELLS LIKE A DARE', x, 113, { size: 5, align: 'center', color: '#c22', shadow: false });
       }
     }
     // cold fog
@@ -226,12 +235,13 @@
 
   const LEVELS = [
     {
-      id: 1, name: 'LIDO DECK BUFFET', subtitle: 'POOL DECK 11 — 94°F', music: 'lido', bg: lidoBg, length: 2600, palette: '#c99a5b',
+      id: 1, name: 'LIDO DECK BUFFET', short: 'LIDO DECK', temp: 94, subtitle: 'POOL DECK 11 — 94°F', music: 'lido', bg: lidoBg, length: 2600, palette: '#c99a5b',
+      banner: ['LIDO DECK', 'THE SALAD BAR CLOCKED IN'],
       intro: {
-        title: 'STAGE 1: LIDO DECK',
-        lines: ['The buffet has been overrun by the salad bar.', 'Ship temp: 94°F and climbing.', 'Lance: "First the A/C. Then a plate."']
+        title: 'LIDO DECK',
+        lines: ['The salad bar has a union now. Their demand is you.', 'Ship temp: 94°F. The ice sculpture is sweating.', 'Lance: "Compressor first. The plate is a bonus."']
       },
-      outro: { lines: ['Lance finds the main intake clogged with kale.', 'Lance: "Who put a SALAD in the air handler?"', 'Duct tape applied. Temp: 94°F -> 88°F.'] },
+      outro: { lines: ['The intake is packed with kale. Kale. In the air handler.', 'Lance: "That is not a filter. That is a lifestyle."', 'Duct tape. Spite. 94°F → 88°F.'] },
       objects: [
         { kind: 'cart', x: 380, y: 300, contents: ['beans', 'burger'] },
         { kind: 'cooler', x: 1080, y: 250, contents: ['chili'] },
@@ -240,18 +250,19 @@
       ],
       pickups: [{ kind: 'beans', x: 720, y: 330 }, { kind: 'chip', x: 1350, y: 220 }],
       waves: [
-        wave(260, [grp(['broccoli', 1, { side: 1 }])], { tutorial: 'ATTACK: E or J (3-hit tool combo). Gamepad X.' }),
-        wave(560, [grp(['broccoli', 1, { side: 1 }], ['sprout', 2, { side: -1 }])], { tutorial: 'Walk INTO an enemy = DUCT-TAPE GRAB. Then attack = knee, Back+attack or jump = throw!' }),
-        wave(950, [grp(['celery', 1, { side: 1 }], ['broccoli', 1, { side: 1 }]), grp(['sprout', 3, { side: -1 }])], { tutorial: 'SPRAY: Q or L freezes enemies. TOOLBOX: R or I. Gamepad Y and RB.' }),
-        wave(1450, [grp(['broccoli', 2, { side: 1 }], ['celery', 1, { side: -1 }]), grp(['sprout', 2, { side: 1 }], ['broccoli', 1, { side: -1 }])], { tutorial: 'Eat BEANS / CHILI / LEFTOVERS to fill the VOLCANO FART meter. F when full!' }),
+        wave(260, [grp(['broccoli', 1, { side: 1 }])], { tutorial: 'E OR J: SCREWDRIVER, WRENCH, PIPE WRENCH. THREE TOOLS. ONE ARGUMENT.' }),
+        wave(560, [grp(['broccoli', 1, { side: 1 }], ['sprout', 2, { side: -1 }])], { tutorial: 'WALK INTO THEM. DUCT TAPE. KNEE, OR THROW THEM AT THEIR FRIENDS.' }),
+        wave(950, [grp(['celery', 1, { side: 1 }], ['broccoli', 1, { side: 1 }]), grp(['sprout', 3, { side: -1 }])], { tutorial: 'Q: REFRIGERANT. FREEZES GREENS, NICKS YOUR HP. R: THE TOOLBOX.' }),
+        wave(1450, [grp(['broccoli', 2, { side: 1 }], ['celery', 1, { side: -1 }]), grp(['sprout', 2, { side: 1 }], ['broccoli', 1, { side: -1 }])], { tutorial: 'BEANS, CHILI, LEFTOVERS. FILL THE GREEN METER. THEN APOLOGIZE.' }),
         wave(2050, [grp(['celery', 2, { side: 1 }], ['broccoli', 2, { side: -1 }], ['sprout', 2, { side: 1 }])]),
         wave(2400, [grp(['broccoli', 1, { side: 1, elite: true }], ['celery', 1, { side: -1 }]), grp(['sprout', 4, { side: 1 }])])
       ]
     },
     {
-      id: 2, name: 'A/C PLANT', subtitle: 'DECK 4 — PIPE CORRIDORS — 88°F', music: 'plant', bg: plantBg, length: 2800, palette: '#48525f',
-      intro: { title: 'STAGE 2: A/C PLANT', lines: ['Deck 4. The compressor room.', 'The pipes are hot, the vents blow steam,', 'and the carrots know kung fu.'] },
-      outro: { lines: ['Lance rewires the compressor with duct tape and spite.', 'Lance: "That\'ll hold till Maui."', 'Temp: 88°F -> 81°F. Refrigerant flowing.'] },
+      id: 2, name: 'A/C PLANT', short: 'A/C PLANT', temp: 88, subtitle: 'DECK 4 — PIPE CORRIDORS — 88°F', music: 'plant', bg: plantBg, length: 2800, palette: '#48525f',
+      banner: ['A/C PLANT', 'CARROTS WITH A BLACK BELT'],
+      intro: { title: 'DECK 4: THE A/C PLANT', lines: ['Pipes hot enough to braise a carrot. The carrots noticed.', 'They brought shurikens. Lance brought a pipe wrench.', 'Lance: "Kung fu is not on the work order."'] },
+      outro: { lines: ['Compressor rewired with duct tape and one unkind word.', 'Lance: "She\'ll hold till Maui. Maybe Tuesday."', '88°F → 81°F. Refrigerant is flowing. The carrots are not.'] },
       hazards: [
         { kind: 'steam', x: 700, y: 260, period: 3.2, offset: 0 },
         { kind: 'steam', x: 1500, y: 300, period: 2.8, offset: 1.2 },
@@ -275,9 +286,10 @@
       ]
     },
     {
-      id: 3, name: 'SPA & JUICE BAR', subtitle: 'DECK 12 — ELITE GREENS — 81°F', music: 'spa', bg: spaBg, length: 2800, palette: '#6fb7ad',
-      intro: { title: 'STAGE 3: SPA & JUICE BAR', lines: ['The coolant lines run under the spa.', 'The juice bar is guarded by the elite:', 'kale bruisers, and the yogurt Lance despises.'] },
-      outro: { lines: ['The juice bar surrenders. Coolant flowing.', 'But the freezer reads -40°F and something is moving.', 'Temp: 81°F -> 75°F. Almost there.'] },
+      id: 3, name: 'SPA & JUICE BAR', short: 'JUICE BAR', temp: 81, subtitle: 'DECK 12 — ELITE GREENS — 81°F', music: 'spa', bg: spaBg, length: 2800, palette: '#6fb7ad',
+      banner: ['SPA & JUICE BAR', 'KALE HAS A MEMBERSHIP'],
+      intro: { title: 'SPA & JUICE BAR', lines: ['Coolant lines run under the cucumber water.', 'The kale has a trainer. The froyo has opinions.', 'Lance: "I don\'t do green juice. I do green meters."'] },
+      outro: { lines: ['Juice bar: surrendered. Coolant: moving.', 'The freezer blinks -40°F and smells like a dare.', '81°F → 75°F. Something strawberry is awake.'] },
       objects: [
         { kind: 'vending', x: 500, y: 240, contents: ['beans', 'chili', 'chip'] },
         { kind: 'plant', x: 1150, y: 320, contents: ['leftovers'] },
@@ -295,8 +307,9 @@
       ]
     },
     {
-      id: 4, name: 'FREEZER / DESSERT STATION', subtitle: 'DECK 3 — -40°F — FINAL', music: 'freezer', bg: freezerBg, length: 1900, palette: '#8fb6dc', boss: true,
-      intro: { title: 'FINAL STAGE: THE FREEZER', lines: ['The last valve is behind the dessert station.', 'It\'s cold. It\'s quiet. It smells like strawberry.', 'Lance: "I hate frozen yogurt."'] },
+      id: 4, name: 'FREEZER / DESSERT STATION', short: 'THE FREEZER', temp: 75, subtitle: 'DECK 3 — -40°F — FINAL', music: 'freezer', bg: freezerBg, length: 1900, palette: '#8fb6dc', boss: true,
+      banner: ['THE FREEZER', 'DESSERT HAS A GRIEVANCE'],
+      intro: { title: 'THE FREEZER', lines: ['Last valve. Behind the dessert station. Of course.', 'It is cold. It is quiet. It is strawberry.', 'Lance: "I have never liked frozen yogurt. Filing that now."'] },
       objects: [
         { kind: 'cooler', x: 380, y: 320, contents: ['chili', 'beans'] },
         { kind: 'crate', x: 900, y: 240, contents: ['turkey', 'chip'] },
@@ -314,16 +327,16 @@
 
   /* Opening cutscene captions — panel order matches the attached art */
   const OPENING = [
-    { img: 'cut1', title: 'HAWAII — UNDER THE SUN...', lines: ['Aboard the Pride of America, paradise is 94 degrees', 'and climbing. The A/C is OUT.'] },
-    { img: 'cut2', title: 'THE CAPTAIN CALLS FOR HELP', lines: ['Captain Andersen: "Get me WHALE LANCE', 'AIR CONDITIONING AND HEATING. Now!"'] },
-    { img: 'cut3', title: 'LANCE ARRIVES', lines: ['Captain: "Fix the A/C. And Lance...', 'STAY AWAY FROM THE BUFFET."', 'Lance: "...No promises."'] },
-    { img: 'cut4', title: 'HEALTHY FOOD ATTACK!', lines: ['Deep in the ducts, the salad bar strikes back.', 'Lance: "I fix ship systems... NOT YOUR DIET!"'] }
+    { img: 'cut1', title: 'HAWAII — UNDER THE SUN...', lines: ['Aboard the Pride of America, paradise is 94°F', 'and the ice sculpture is losing. The A/C is OUT.'] },
+    { img: 'cut2', title: 'THE CAPTAIN CALLS FOR HELP', lines: ['Captain Andersen: "Get me WHALE LANCE', 'AIR CONDITIONING AND HEATING. Now."'] },
+    { img: 'cut3', title: 'LANCE ARRIVES', lines: ['Captain: "Fix the A/C. And Lance...', 'STAY AWAY FROM THE BUFFET."', 'Lance: "I\'ll need that in writing."'] },
+    { img: 'cut4', title: 'THE SALAD BAR STRIKES', lines: ['Deep in the ducts, the greens clock in.', 'Lance: "I fix ducts. I do not fix your diet."'] }
   ];
 
   const ENDING = [
-    { lines: ['The Giant Froyo Cone melts into a strawberry puddle.', 'Lance turns the last valve.', 'A hum. A breeze. 72°F.'] },
-    { lines: ['Captain Andersen: "Lance... you look... SVELTE."', 'Lance: "Four decks of stairs, three hundred vegetables,', 'and one very committed fart. It\'s called cardio."'] },
-    { lines: ['Captain: "Buffet\'s open. You\'ve earned it."', 'Lance: "Now we\'re talking."', 'WHALE LANCE AIR CONDITIONING AND HEATING — WE SPEAR THE COMPETITION.'] }
+    { lines: ['The cone is a strawberry puddle with regrets.', 'Lance turns the last valve like he means it.', 'A hum. A breeze. 72°F. The ship exhales.'] },
+    { lines: ['Captain Andersen: "Lance. You look... svelte."', 'Lance: "Four decks, one salad-bar uprising,', 'and a fart with a work order. That\'s cardio."'] },
+    { lines: ['Captain: "Buffet\'s open. You earned the carving station."', 'Lance: "Now you\'re speaking my language."', 'WHALE LANCE A/C — WE SPEAR THE COMPETITION.'] }
   ];
 
   WL.LEVELS = LEVELS;
