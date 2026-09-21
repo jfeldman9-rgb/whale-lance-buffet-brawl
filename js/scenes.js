@@ -364,8 +364,9 @@
     showBanner(a, b, dur, big) { this.banner = { a, b, big: !!big }; this.bannerT = dur || 2; }
     showTutorial(txt) { this.tutorial = txt; this.tutorialT = 5.5; }
     onBossPhase(n) {
-      if (n === 2) { this.showBanner('THE SWIRL CRACKS', 'TOPPINGS. FROM ABOVE.', 2.1); this.fx.text(this.boss.x, this.boss.y - 180, '"TOPPINGS ARE MANDATORY."', '#fff', 2); }
-      if (n === 3) { this.showBanner('MELTDOWN', 'THE PUDDLE HAS OPINIONS.', 2.1); this.fx.text(this.boss.x, this.boss.y - 180, '"98% GRUDGE. 2% MILKFAT."', '#f9c', 2.2); A.sfx.bossRoar(); }
+      // Banner only. A floating quote was landing on the cone's face.
+      if (n === 2) this.showBanner('THE SWIRL CRACKS', 'TOPPINGS. FROM ABOVE.', 2.1);
+      if (n === 3) this.showBanner('MELTDOWN', '98% GRUDGE. 2% MILKFAT.', 2.1);
       A.sfx.bossRoar(); this.impact(this.boss && this.boss.facing || 1, 'boss');
       // the dessert station coughs up some real food between phases
       this.spawnPickup('burger', this.camX + 120, U.rand(FT + 20, FB - 20), true);
@@ -422,8 +423,7 @@
       this.boss = new E.Boss(this, this.camX + W - 110, (FT + FB) / 2);
       this.enemies.push(this.boss);
       A.playMusic('boss'); A.sfx.bossRoar(); this.impact(-1, 'boss');
-      this.showBanner('BOSS CONE', 'GIANT FROYO. NO SAMPLES.', 2.8);
-      this.fx.text(this.boss.x, this.boss.y - 180, '"YOU LOOK LIKE YOU WANT A SAMPLE."', '#f9c', 2.8);
+      this.showBanner('BOSS CONE', 'YOU WANT A SAMPLE?', 2.8);
     }
 
     update(dt, inp) {
@@ -601,9 +601,9 @@
       ctx.restore();
       if (this.fartT >= 0 && this.fartT < 1.05) {
         const k = Math.sin(Math.min(1, this.fartT / 0.1) * Math.PI / 2) * Math.min(1, (1.05 - this.fartT) / 0.28);
-        const h = 26 * k;
+        const h = 36 * k;
         ctx.fillStyle = '#071007';
-        ctx.fillRect(0, 44, W, h * 0.45);
+        ctx.fillRect(0, 44, W, Math.max(10, h * 0.62));
         ctx.fillRect(0, H - h, W, h);
       }
       if (this.flashT > 0) { ctx.save(); ctx.globalAlpha = Math.min(0.8, this.flashT * 2.5); ctx.fillStyle = this.flashColor; ctx.fillRect(0, 0, W, H); ctx.restore(); }
@@ -630,6 +630,9 @@
           ctx.beginPath();
           ctx.ellipse(sx + dir * reach * 0.42, sy, Math.max(10, reach * 0.48 * (0.4 + 0.6 * k)), 7, 0, 0, Math.PI * 2);
           ctx.fill();
+          ctx.globalAlpha = 0.9;
+          ctx.strokeStyle = '#1a0808'; ctx.lineWidth = 2;
+          ctx.stroke();
           ctx.restore();
         }
         if (pass === 'label' && telling) {
@@ -647,6 +650,9 @@
           ctx.beginPath();
           ctx.ellipse(sx + dir * 72, sy, 34 + k * 46, 13, 0, 0, Math.PI * 2);
           ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = '#1a0808'; ctx.lineWidth = 2;
+          ctx.stroke();
           ctx.restore();
         }
         if (pass === 'floor' && (e.state === 'jumpWind' || e.state === 'jump') && e.jumpTargetX != null) {
@@ -729,8 +735,8 @@
         ctx.scale(pop, pop);
         const col = p.comboCount >= 12 ? '#ff7ad4' : p.comboCount >= 8 ? '#fff' : '#ffe14a';
         T.draw(ctx, `${p.comboCount} HITS`, 0, 0, { size: p.comboCount >= 10 ? 16 : 13, color: col, stroke: '#000', strokeWidth: 4 });
-        if (rank) T.draw(ctx, rank, 0, 18, { size: 7, color: '#f9c', stroke: '#000', strokeWidth: 3 });
-        else if (tool) T.draw(ctx, tool, 0, 16, { size: 6, color: '#fff', stroke: '#000', strokeWidth: 3 });
+        if (rank) T.draw(ctx, rank, 0, 16, { size: 7, color: '#f9c', stroke: '#000', strokeWidth: 3 });
+        if (tool) T.draw(ctx, tool, 0, rank ? 28 : 16, { size: 6, color: '#fff', stroke: '#000', strokeWidth: 3 });
         ctx.restore();
       }
       if (this.bannerT <= 0 && this.cards.length) {

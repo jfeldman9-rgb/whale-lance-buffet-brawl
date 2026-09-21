@@ -1035,7 +1035,7 @@ WL.sprites = (function () {
       const R = 24 + lt * 520;
       ctx.globalAlpha = Math.max(0, 0.9 - lt * 0.75);
       ctx.strokeStyle = i === 0 ? '#f6ffe4' : (i === 1 ? '#c6ff4a' : '#5f8f22');
-      ctx.lineWidth = Math.max(1.5, 9 - lt * 7);
+      ctx.lineWidth = Math.max(2, 12 - lt * 8);
       ctx.beginPath();
       ctx.ellipse(x, y - 16, R, R * 0.36, 0, 0, Math.PI * 2);
       ctx.stroke();
