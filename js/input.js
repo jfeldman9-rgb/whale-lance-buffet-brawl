@@ -119,6 +119,8 @@ WL.input = (function () {
       return;
     }
     touch.enabled = true;
+    // Keep receiving release/cancel when a thumb leaves the canvas.
+    if (e.currentTarget && e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
     anyKey = true;
     queue.push('click');
     for (const b of touch.buttons) {
@@ -261,11 +263,17 @@ WL.input = (function () {
     toCanvas = mapFn;
     window.addEventListener('keydown', e => onKey(e, true));
     window.addEventListener('keyup', e => onKey(e, false));
-    window.addEventListener('blur', () => {
+    function clearInput() {
       for (const k in keyDown) keyDown[k] = false;
       for (const k in held) held[k] = false;
       for (const k in padDown) padDown[k] = false;
-    });
+      for (const k in pressed) pressed[k] = false;
+      queue.length = 0;
+      touch.pointers.clear();
+      touch.joy.active = false; touch.joy.id = null;
+    }
+    window.addEventListener('blur', clearInput);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) clearInput(); });
     window.addEventListener('gamepadconnected', e => { gamepad.connected = true; gamepad.index = e.gamepad.index; anyKey = true; });
     window.addEventListener('gamepaddisconnected', () => { gamepad.connected = false; gamepad.index = null; });
     canvas.addEventListener('pointerdown', pointerDown);

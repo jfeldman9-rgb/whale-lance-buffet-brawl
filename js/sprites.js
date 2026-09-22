@@ -261,7 +261,7 @@ WL.sprites = (function () {
     const f = flashCanvas.getContext('2d');
     f.setTransform(rs, 0, 0, rs, 0, 0);
     f.clearRect(0, 0, FLASH_W, FLASH_H);
-    f.imageSmoothingEnabled = false;
+    f.imageSmoothingEnabled = WL.display.mode !== 'classic';
     drawFn(f);
     f.setTransform(1, 0, 0, 1, 0, 0);
     f.globalCompositeOperation = 'source-atop';
@@ -269,7 +269,7 @@ WL.sprites = (function () {
     f.fillRect(0, 0, flashCanvas.width, flashCanvas.height);
     f.globalCompositeOperation = 'source-over';
     const smooth = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = WL.display.mode !== 'classic';
     ctx.drawImage(flashCanvas, x - ox, y - oy, FLASH_W, FLASH_H);
     ctx.imageSmoothingEnabled = smooth;
   }

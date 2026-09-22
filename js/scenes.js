@@ -30,7 +30,7 @@
       hudHead.key = key; hudHead.canvas = c;
     }
     const smooth = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = WL.display.mode !== 'classic';
     ctx.drawImage(hudHead.canvas, 7, 6, 28, 32);
     ctx.imageSmoothingEnabled = smooth;
   }
@@ -90,7 +90,7 @@
       const bounce = Math.sin(t * 2) * 3;
       T.draw(ctx, 'WHALE LANCE AIR CONDITIONING AND HEATING PRESENTS', W / 2, 14, { size: 7, align: 'center', color: '#ffe' });
       T.draw(ctx, 'WHALE LANCE', W / 2 - 80, 40 + bounce, { size: 26, align: 'center', gradient: ['#fff3a0', '#ffb300', '#e0301e'], stroke: '#2a0a0a', strokeWidth: 6 });
-      T.draw(ctx, 'BUFFET BRAWL', W / 2 - 80, 78 + bounce, { size: 40, align: 'center', gradient: ['#ffffff', '#ffd23f', '#ff4d00'], stroke: '#2a0a0a', strokeWidth: 8 });
+      T.draw(ctx, 'BUFFET BRAWL', W / 2 - 80, 78 + bounce, { size: 34, align: 'center', gradient: ['#ffffff', '#ffd23f', '#ff4d00'], stroke: '#2a0a0a', strokeWidth: 8 });
       // whale logo
       ctx.save(); ctx.translate(W / 2 - 80, 130); D.ellipse(ctx, 0, 0, 30, 14, '#fff', S.OUT); ctx.beginPath(); ctx.moveTo(26, -4); ctx.lineTo(44, -18); ctx.lineTo(42, 4); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke(); D.circle(ctx, -14, -3, 2, S.OUT);
       ctx.fillStyle = '#fff'; ctx.fillRect(-4, -20, 2, 8); ctx.fillRect(-8, -18, 2, 6); ctx.fillRect(0, -18, 2, 6); ctx.restore();
@@ -665,7 +665,8 @@
     draw(ctx) {
       const L = this.level, p = this.player;
       ctx.save();
-      ctx.translate(Math.round(this.shakeX + this.punchX), Math.round(this.shakeY + this.punchY));
+      const snap = WL.display.mode === 'classic' ? 1 : WL.display.renderScale;
+      ctx.translate(Math.round((this.shakeX + this.punchX) * snap) / snap, Math.round((this.shakeY + this.punchY) * snap) / snap);
       L.bg(ctx, this.camX, this.t);
       // hazards (steam vents)
       for (const h of this.hazards) {

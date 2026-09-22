@@ -9,9 +9,9 @@ WL.FLOOR_TOP = 205;     // highest walkable foot position (far)
 WL.FLOOR_BOTTOM = 345;  // lowest walkable foot position (near)
 WL.FONT = "'Press Start 2P', 'Courier New', monospace";
 
-/* Desktop presentation. main.js fills renderScale / pc / dpr from the window.
-   mode: 'auto' (device pixels on every screen, higher cap on a desktop),
-   'sharp' (same path, cap raised), 'classic' (640x360, nearest-neighbor).
+/* Display presentation. main.js fills renderScale / pc / dpr from the window.
+   mode: 'auto' (device pixels on every screen, up to 4K),
+   'sharp' (at least 2x device density, up to 4K), 'classic' (640x360, nearest-neighbor).
    renderScale is the world-to-backing-store scale, including devicePixelRatio. */
 WL.display = {
   mode: 'auto',
@@ -253,6 +253,8 @@ WL.draw = {
     ctx.restore();
   },
   scanlines(ctx, alpha) {
+    // CRT stripes intentionally belong to Classic, never the HD presentation.
+    if (WL.display.mode !== 'classic') return;
     // One path instead of a fillRect per stripe. The stripe is one device
     // pixel so a retina backing store doesn't turn the CRT mask into thick
     // bars that soften Lance and the HUD.

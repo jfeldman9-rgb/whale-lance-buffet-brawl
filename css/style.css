@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/press-start-2p.ttf') format('truetype');
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -22,8 +30,7 @@ html, body {
 
 canvas#game {
   display: block;
-  /* JS sets pixelated only when the backing store is smaller than the screen.
-     A 1:1 device-pixel buffer should not be filtered again. */
+  /* Only Classic opts into nearest-neighbor pixelation. */
   image-rendering: auto;
   background: #000;
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);

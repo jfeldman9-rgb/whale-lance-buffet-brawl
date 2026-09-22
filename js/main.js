@@ -23,9 +23,8 @@
   }
   loadSettings();
 
-  function wantsSharp() {
-    if (WL.display.mode === 'classic') return false;
-    if (WL.display.mode === 'sharp') return true;
+  function desktopLayout() {
+    // Resolution must not change the input hints or camera lead.
     // A big window is a desktop (or a headless browser that doesn't report a
     // fine pointer). A phone reports a coarse pointer and a narrow window.
     const fine = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -107,7 +106,7 @@
   }
   function resize() {
     const vw = Math.max(1, window.innerWidth), vh = Math.max(1, window.innerHeight);
-    const sharp = wantsSharp();
+    const sharp = desktopLayout();
     WL.display.pc = sharp;
     const rawDpr = Math.max(1, window.devicePixelRatio || 1);
     WL.display.dpr = rawDpr;
@@ -122,23 +121,13 @@
     cssH = Math.max(1, cssH);
 
     const classic = WL.display.mode === 'classic';
-    let renderScale = 1;
-    let smoothing = 'pixelated';
-    if (!classic) {
-      // Phones cap lower so a 3x panel doesn't allocate a desktop-sized buffer.
-      const dprCap = sharp ? 3 : 2;
-      const maxScale = sharp ? 5 : 2.5;
-      const dpr = Math.min(rawDpr, dprCap);
-      renderScale = Math.min(maxScale, Math.max(1, (cssW * dpr) / W));
-      const deviceW = cssW * rawDpr;
-      const backingW = W * renderScale;
-      // Nearest-neighbor only when we had to draw fewer pixels than the screen.
-      smoothing = backingW < deviceW * 0.92 ? 'pixelated' : 'auto';
-    }
-
-    const bw = Math.max(W, Math.round(W * renderScale));
-    const bh = Math.max(H, Math.round(H * (bw / W)));
-    renderScale = bw / W;
+    // Native device pixels on phones too. Sharp supersamples 1x screens;
+    // both modes have a 4K / 8.3 MP ceiling to bound GPU memory and fill cost.
+    // Keep an exact 16:9 buffer so circles and input coordinates stay aligned.
+    const dpr = WL.display.mode === 'sharp' ? Math.max(2, rawDpr) : rawDpr;
+    const bw = classic ? W : Math.min(3840, Math.max(W, Math.ceil(cssW * dpr / 16) * 16));
+    const bh = bw * H / W;
+    const renderScale = bw / W;
     WL.display.renderScale = renderScale;
 
     if (canvas.width !== bw || canvas.height !== bh) {
@@ -146,8 +135,9 @@
       canvas.height = bh;
     }
     canvas.style.width = cssW + 'px';
-    canvas.style.height = Math.max(1, Math.round(cssW * (bh / bw))) + 'px';
-    canvas.style.imageRendering = smoothing;
+    canvas.style.height = (cssW * H / W) + 'px';
+    // Nearest-neighbor is only appropriate for the explicitly retro mode.
+    canvas.style.imageRendering = classic ? 'pixelated' : 'auto';
     canvas.classList.toggle('pc', sharp);
     applyTransform();
   }
@@ -196,7 +186,7 @@
     setTimeout(resize, 50);
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden || !WL.display.pc) return;
+    if (!document.hidden) return;
     const s = game.scene;
     if (s && s instanceof WL.scenes.Play && s.phase === 'play' && !s.paused) {
       s.paused = true;
@@ -221,7 +211,14 @@
 
   /* ---- loading ---- */
   let loading = true, progress = 0;
-  WL.assets.load(p => { progress = p; }).then(() => { loading = false; game.setScene(new WL.scenes.Title(game)); });
+  // Wait briefly for the bundled typeface before caching HUD portraits/text.
+  const fontReady = document.fonts ? Promise.race([
+    document.fonts.load(`8px ${WL.FONT}`).catch(() => {}),
+    new Promise(resolve => setTimeout(resolve, 1500))
+  ]) : Promise.resolve();
+  Promise.all([WL.assets.load(p => { progress = p; }), fontReady]).then(() => {
+    loading = false; game.setScene(new WL.scenes.Title(game));
+  });
 
   /* ---- loop ---- */
   let last = performance.now();
