@@ -150,11 +150,21 @@ WL.draw = {
     ctx.lineWidth = w || 1;
     ctx.stroke();
   },
-  shadow(ctx, x, y, rx, ry) {
+  shadow(ctx, x, y, rx, ry, z) {
+    const s = Math.max(0.25, 1 - (z || 0) / 160);
+    const srx = rx * s;
+    const sry = (ry || rx * 0.35) * s;
+    const a = Math.min(0.5, 0.42 * s);
+    ctx.save();
+    const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(1, srx));
+    g.addColorStop(0, `rgba(0,0,0,${a})`);
+    g.addColorStop(0.65, `rgba(0,0,0,${a * 0.6})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.ellipse(x, y, rx, ry || rx * 0.35, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.ellipse(x, y, srx, sry, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
   },
   // arcade-style bar
   bar(ctx, x, y, w, h, pct, fg, bg, border) {
@@ -168,6 +178,79 @@ WL.draw = {
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.fillRect(x, y, Math.max(1, Math.round(w * U.clamp(pct, 0, 1))), Math.max(1, h >> 2));
     }
+  },
+  arcadeBar(ctx, x, y, w, h, pct, ghostPct, fg, ghostCol, bg) {
+    pct = U.clamp(pct, 0, 1);
+    ghostPct = U.clamp(ghostPct !== undefined ? ghostPct : pct, pct, 1);
+    ctx.fillStyle = '#06060c';
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.fillStyle = '#222638';
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = bg || '#1e080a';
+    ctx.fillRect(x, y, w, h);
+    if (ghostPct > 0) {
+      const gw = Math.max(1, Math.round(w * ghostPct));
+      ctx.fillStyle = ghostCol || '#ffaa33';
+      ctx.fillRect(x, y, gw, h);
+    }
+    if (pct > 0) {
+      const bw = Math.max(1, Math.round(w * pct));
+      ctx.fillStyle = fg;
+      ctx.fillRect(x, y, bw, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.42)';
+      ctx.fillRect(x, y, bw, Math.max(1, Math.floor(h * 0.35)));
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(x, y + Math.floor(h * 0.7), bw, Math.ceil(h * 0.3));
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    for (let p = 0.2; p < 0.99; p += 0.2) {
+      const tx = Math.round(x + w * p);
+      ctx.fillRect(tx, y, 1, h);
+    }
+  },
+  stageLighting(ctx, stageId, pulse, t) {
+    ctx.save();
+    pulse = U.clamp(pulse || 0, 0, 1);
+    const W = WL.W, H = WL.H;
+    const vig = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.75);
+    if (stageId === 1) {
+      vig.addColorStop(0, 'rgba(255,240,200,0)');
+      vig.addColorStop(0.7, 'rgba(30,15,5,0.22)');
+      vig.addColorStop(1, `rgba(15,8,3,${0.5 + pulse * 0.25})`);
+      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+      const sun = ctx.createLinearGradient(0, 0, 0, 95);
+      sun.addColorStop(0, 'rgba(255,230,140,0.14)');
+      sun.addColorStop(1, 'rgba(255,230,140,0)');
+      ctx.fillStyle = sun; ctx.fillRect(0, 0, W, 95);
+    } else if (stageId === 2) {
+      vig.addColorStop(0, 'rgba(0,20,30,0)');
+      vig.addColorStop(0.7, 'rgba(5,15,22,0.32)');
+      vig.addColorStop(1, `rgba(2,8,14,${0.62 + pulse * 0.25})`);
+      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+      if (Math.sin((t || 0) * 2) > 0) {
+        ctx.fillStyle = 'rgba(255,140,20,0.03)';
+        ctx.fillRect(0, 0, W, H);
+      }
+    } else if (stageId === 3) {
+      vig.addColorStop(0, 'rgba(200,255,245,0)');
+      vig.addColorStop(0.7, 'rgba(10,35,30,0.22)');
+      vig.addColorStop(1, `rgba(4,18,16,${0.52 + pulse * 0.25})`);
+      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(60,200,180,0.035)';
+      ctx.fillRect(0, 0, W, H);
+    } else if (stageId === 4) {
+      vig.addColorStop(0, 'rgba(210,240,255,0)');
+      vig.addColorStop(0.7, 'rgba(10,20,45,0.32)');
+      vig.addColorStop(1, `rgba(4,10,28,${0.65 + pulse * 0.25})`);
+      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(140,210,255,0.05)';
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (pulse > 0) {
+      ctx.fillStyle = `rgba(255,255,220,${pulse * 0.18})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.restore();
   },
   scanlines(ctx, alpha) {
     // One path instead of a fillRect per stripe. The stripe is one device

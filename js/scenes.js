@@ -251,13 +251,55 @@
       const V = S.VEG[type]; const cols = V ? [V.body || V.swirl, V.dark || V.cup, '#fff'] : ['#fff'];
       for (let i = 0; i < 10; i++) this.list.push({ kind: 'chunk', x, y, vx: U.rand(-160, 160), vy: U.rand(-260, -60), t: 0, life: 0.8, color: U.pick(cols), r: U.rand(2, 5) });
     }
+    foodDebris(x, y, type) {
+      const V = S.VEG[type];
+      const cols = V ? [V.body || V.swirl, V.dark || V.cup, '#ffe14a', '#ffffff'] : ['#55d840', '#f08a1e', '#ffffff'];
+      for (let i = 0; i < 7; i++) {
+        this.list.push({
+          kind: 'chunk', x, y,
+          vx: U.rand(-140, 140), vy: U.rand(-200, -50),
+          t: 0, life: U.rand(0.4, 0.7),
+          color: U.pick(cols), r: U.rand(1.5, 3.5),
+          square: i % 2 === 0
+        });
+      }
+    }
+    impactRing(x, y, big) {
+      this.list.push({ kind: 'ring', x, y, t: 0, life: 0.24, big });
+    }
     fartBurst(x, y) {
       const cols = ['#d8ff8a', '#7ad83a', '#5a8a2a', '#efe6c8', '#c8a15a'];
       for (let i = 0; i < 22; i++) this.list.push({ kind: 'chunk', x, y, vx: U.rand(-420, 420), vy: U.rand(-460, -40), t: 0, life: 0.85, color: U.pick(cols), r: U.rand(2, 6), square: i % 3 === 0 });
     }
     debris(x, y, kind) {
-      const cols = kind === 'crate' ? ['#b07a3a', '#6a4218'] : kind === 'barrel' ? ['#4a8a3a', '#2a5a20'] : kind === 'vending' ? ['#2a8a5a', '#0a1a2a', '#d33'] : ['#d0d4dc', '#8a8f9a', '#c8322a'];
-      for (let i = 0; i < 14; i++) this.list.push({ kind: 'chunk', x, y, vx: U.rand(-200, 200), vy: U.rand(-300, -80), t: 0, life: 0.9, color: U.pick(cols), r: U.rand(2, 6), square: true });
+      let cols = ['#d0d4dc', '#8a8f9a', '#c8322a'];
+      let count = 14;
+      if (kind === 'plates') {
+        cols = ['#ffffff', '#f4f8fb', '#e2e8f0', '#d4af37'];
+        count = 18;
+      } else if (kind === 'tray') {
+        cols = ['#e0e4ec', '#a4afbf', '#748094', '#ffaa33'];
+        count = 16;
+      } else if (kind === 'chair') {
+        cols = ['#5c2f15', '#881b24', '#d4af37', '#7a421c'];
+        count = 16;
+      } else if (kind === 'crate') {
+        cols = ['#b07a3a', '#6a4218'];
+      } else if (kind === 'barrel') {
+        cols = ['#4a8a3a', '#2a5a20'];
+      } else if (kind === 'vending') {
+        cols = ['#2a8a5a', '#0a1a2a', '#d33'];
+      }
+      for (let i = 0; i < count; i++) {
+        this.list.push({
+          kind: 'chunk', x, y,
+          vx: U.rand(-220, 220), vy: U.rand(-320, -90),
+          t: 0, life: U.rand(0.7, 1.1),
+          color: U.pick(cols), r: U.rand(2, 6),
+          square: kind !== 'plates',
+          shard: kind === 'plates'
+        });
+      }
     }
     update(dt) {
       for (const f of this.list) {
@@ -274,7 +316,38 @@
         switch (f.kind) {
           case 'spark': S.drawHitSpark(ctx, sx, f.y, f.t, f.big); break;
           case 'dust': S.drawDust(ctx, sx, f.y, f.t, f.r); break;
-          case 'chunk': ctx.save(); ctx.globalAlpha = 1 - f.t / f.life; if (f.square) { ctx.fillStyle = f.color; ctx.fillRect(sx - f.r / 2, f.y - f.r / 2, f.r, f.r); } else D.circle(ctx, sx, f.y, f.r, f.color); ctx.restore(); break;
+          case 'ring': {
+            ctx.save();
+            const k = f.t / f.life;
+            ctx.globalAlpha = Math.max(0, 1 - k);
+            const r = (f.big ? 28 : 16) + k * (f.big ? 40 : 26);
+            ctx.strokeStyle = f.big ? '#ffe14a' : '#ffffff';
+            ctx.lineWidth = Math.max(1, (1 - k) * 3);
+            ctx.beginPath();
+            ctx.ellipse(sx, f.y, r, r * 0.42, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+            break;
+          }
+          case 'chunk': {
+            ctx.save();
+            ctx.globalAlpha = 1 - f.t / f.life;
+            if (f.shard) {
+              ctx.fillStyle = f.color;
+              ctx.beginPath();
+              ctx.moveTo(sx - f.r, f.y + f.r);
+              ctx.lineTo(sx + f.r, f.y);
+              ctx.lineTo(sx, f.y - f.r);
+              ctx.closePath();
+              ctx.fill();
+            } else if (f.square) {
+              ctx.fillStyle = f.color; ctx.fillRect(sx - f.r / 2, f.y - f.r / 2, f.r, f.r);
+            } else {
+              D.circle(ctx, sx, f.y, f.r, f.color);
+            }
+            ctx.restore();
+            break;
+          }
           case 'text': ctx.save(); ctx.globalAlpha = Math.min(1, (f.life - f.t) * 2); T.draw(ctx, f.str, sx, f.y, { size: 8, align: 'center', color: f.color, stroke: '#000', strokeWidth: 3 }); ctx.restore(); break;
         }
       }
@@ -303,6 +376,9 @@
       this.goArrowT = 0;
       this.puddleTick = 0;
       this.cheatInvuln = false;
+      this.lightingPulse = 0;
+      this.slowmoT = 0;
+      this.playerGhostHp = 100;
     }
     enter() {
       const L = this.level;
@@ -310,6 +386,7 @@
       if (this.carry.score !== undefined) this.player.score = this.carry.score;
       if (this.carry.lives !== undefined) this.player.lives = this.carry.lives;
       if (this.carry.fart !== undefined) this.player.fart = this.carry.fart;
+      this.playerGhostHp = this.player.hp;
       for (const o of L.objects || []) this.objects.push(new E.Breakable(this, o.kind, o.x, o.y, o.contents));
       for (const p of L.pickups || []) this.pickups.push(new E.Pickup(this, p.kind, p.x, p.y, false));
       for (const h of L.hazards || []) this.hazards.push({ ...h, hit: new Set(), wasActive: false });
@@ -324,6 +401,10 @@
     }
     attackers() { let n = 0; for (const e of this.enemies) if (!e.dead && ['windup', 'prime', 'attack', 'dash', 'charge'].includes(e.state)) n++; return n; }
     shake(a, d) { this.shakeAmt = Math.max(this.shakeAmt, a); this.shakeT = Math.max(this.shakeT, d); }
+    triggerHitFlash(dur) {
+      this.flashT = Math.max(this.flashT, dur || 0.035);
+      this.flashColor = '#ffffff';
+    }
     impact(dir, kind) {
       const table = {
         light: { stop: 0.05, punch: 5, y: -1, shake: 2.4, shakeT: 0.09 },
@@ -337,6 +418,7 @@
       this.punchY = U.clamp(this.punchY + s.y, -12, 12);
       this.shake(s.shake, s.shakeT);
       if (s.flash) { this.flashT = Math.max(this.flashT, s.flash); this.flashColor = s.flashColor; }
+      this.lightingPulse = Math.min(1, this.lightingPulse + (kind === 'fart' ? 1.0 : kind === 'boss' ? 0.75 : kind === 'heavy' ? 0.5 : 0.2));
       if (kind === 'heavy' || kind === 'boss') { if (WL.input.rumble) WL.input.rumble(kind === 'boss' ? 90 : 50, 0.55, 0.3); }
     }
     bark(id) {
@@ -433,12 +515,23 @@
 
     update(dt, inp) {
       this.t += dt;
+      let actDt = dt;
+      if (this.slowmoT > 0) {
+        this.slowmoT -= dt;
+        actDt = dt * 0.38;
+      }
+      if (this.lightingPulse > 0) this.lightingPulse = Math.max(0, this.lightingPulse - dt * 3.5);
+      if (this.player) {
+        if (this.playerGhostHp > this.player.hp) {
+          this.playerGhostHp = Math.max(this.player.hp, this.playerGhostHp - dt * 45);
+        } else {
+          this.playerGhostHp = this.player.hp;
+        }
+      }
       if (inp.pressed.pause && this.phase === 'play') {
         if (this.paused) { this.paused = false; A.sfx.blip(); return; }
         this.paused = true; this.pauseSel = 0; this.pauseLatch = true; A.sfx.blip();
       } else if (inp.pressed.start && this.phase === 'play' && !this.paused) {
-        // Gamepad Start and Enter open the pause menu. Latch so this same
-        // press doesn't immediately confirm "RESUME".
         this.paused = true; this.pauseSel = 0; this.pauseLatch = true; A.sfx.blip();
       }
       if (this.paused) {
@@ -453,15 +546,14 @@
       if (this.flashT > 0) this.flashT -= dt;
       if (this.fartT >= 0) { this.fartT += dt; if (this.fartT > 1.35) this.fartT = -1; }
       if (this.shakeT > 0) { this.shakeT -= dt; this.shakeX = U.rand(-1, 1) * this.shakeAmt; this.shakeY = U.rand(-1, 1) * this.shakeAmt * 0.6; if (this.shakeT <= 0) this.shakeAmt = 0; } else { this.shakeX = this.shakeY = 0; }
-      this.fx.update(dt);
+      this.fx.update(actDt);
       this.phaseT += dt;
       if (this.phase === 'intro') { if (this.phaseT > 1.2) this.phase = 'play'; }
       if (this.phase === 'dead') { if (this.phaseT > 1.5) this.game.gameOver(this.levelIndex, this.player.score); return; }
-      if (this.phase === 'bossdead') { this.player.t += dt; this.updateEntities(dt, inp, true); if (this.phaseT > 4.5) this.game.levelComplete(this.levelIndex, this.player); return; }
-      if (this.phase === 'clear') { this.player.t += dt; this.updateEntities(dt, inp, true); if (this.phaseT > 3) this.game.levelComplete(this.levelIndex, this.player); return; }
+      if (this.phase === 'bossdead') { this.player.t += actDt; this.updateEntities(actDt, inp, true); if (this.phaseT > 4.5) this.game.levelComplete(this.levelIndex, this.player); return; }
+      if (this.phase === 'clear') { this.player.t += actDt; this.updateEntities(actDt, inp, true); if (this.phaseT > 3) this.game.levelComplete(this.levelIndex, this.player); return; }
 
       if (this.hitstop > 0) {
-        // Hold the punch through the freeze, and don't eat the next tap.
         this.hitstop -= dt;
         if (inp.pressed.attack && this.player && this.player.state === 'attack') this.player.bufferAttack = true;
         if (inp.pressed.fart && this.player && this.player.fart >= this.player.fartMax) this.player.bufferFart = true;
@@ -469,14 +561,12 @@
       }
       const back = Math.pow(0.42, dt * 60);
       this.punchX *= back; this.punchY *= back;
-      this.updateEntities(dt, inp, false);
+      this.updateEntities(actDt, inp, false);
 
       // camera + waves
       const p = this.player;
       const L = this.level;
       if (!this.locked) {
-        // Desktop framing sits Lance a little further left so the next wave
-        // is on screen before it arrives.
         const lead = WL.display.pc ? 0.33 : 0.42;
         const target = p.x - W * lead;
         this.camX = Math.max(this.camX, Math.min(target, L.length - W));
@@ -487,7 +577,7 @@
           else { this.spawnGroup(wv.groups[0]); if (wv.tutorial) this.showTutorial(wv.tutorial); }
         }
         if (!wv && p.x >= L.length - 40 && this.phase === 'play' && !L.boss) {
-          this.phase = 'clear'; this.phaseT = 0; p.setState('victory'); p.won = true; A.stopMusic(); A.sfx.levelClear(); this.showBanner('DECK SECURED', `TEMP'S DROPPING. +${1000 * L.id}`, 3); p.addScore(1000 * L.id);
+          this.phase = 'clear'; this.phaseT = 0; p.setState('victory'); p.won = true; A.stopMusic(); A.sfx.levelClear(); this.showBanner('DECK SECURED!', `TEMP'S DROPPING. +${1000 * L.id}`, 3.2, true); p.addScore(1000 * L.id);
         }
       } else {
         const wv = this.currentWave();
@@ -495,7 +585,17 @@
         if (wv && !wv.boss) {
           const lastGroup = this.groupIdx >= wv.groups.length - 1;
           if (!lastGroup && alive <= 1) { this.groupIdx++; this.spawnGroup(wv.groups[this.groupIdx]); }
-          else if (lastGroup && alive === 0) { this.locked = false; this.waveIdx++; this.goArrowT = 3; A.sfx.select(); }
+          else if (lastGroup && alive === 0) {
+            this.locked = false;
+            this.waveIdx++;
+            this.goArrowT = 3.5;
+            this.showBanner('WAVE CLEAR!', `BONUS +${300 * this.waveIdx} PTS`, 2.2);
+            A.sfx.waveClear();
+            if (this.player && this.player.state === 'idle') {
+              this.player.setState('victory');
+              this.player.stateT = 0;
+            }
+          }
         }
       }
       if (this.goArrowT > 0) this.goArrowT -= dt;
@@ -612,6 +712,7 @@
         ctx.fillRect(0, H - h, W, h);
       }
       if (this.flashT > 0) { ctx.save(); ctx.globalAlpha = Math.min(0.8, this.flashT * 2.5); ctx.fillStyle = this.flashColor; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+      WL.draw.stageLighting(ctx, L.id, this.lightingPulse, this.t);
       this.drawHUD(ctx);
       // Control picture stays for the whole stage — intro, fight, clear —
       // on a phone and on a desktop. It is not tied to the tutorial timer.
@@ -696,8 +797,11 @@
     }
     drawHUD(ctx) {
       const p = this.player, L = this.level;
-      // top bar
-      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, 44);
+      // top bar with metallic gold border
+      ctx.fillStyle = 'rgba(8,10,22,0.82)'; ctx.fillRect(0, 0, W, 44);
+      ctx.fillStyle = '#d4af37'; ctx.fillRect(0, 44, W, 1.5);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(0, 0, W, 1);
+
       // lei-framed portrait — the cruise shirt should read in the scrum, not only the cutscene
       D.fillRRect(ctx, 4, 3, 34, 38, 3, '#6a2f9a', '#ffe14a');
       ctx.fillStyle = '#f7f2ff'; ctx.fillRect(6, 3, 3, 38); ctx.fillRect(33, 3, 3, 38);
@@ -707,43 +811,55 @@
       T.draw(ctx, 'LANCE', 42, 5, { size: 8, color: '#ffe14a' });
       T.draw(ctx, 'A/C', 96, 7, { size: 6, color: '#e7c6ff' });
       const hpPct = p.hp / p.maxHp;
-      D.bar(ctx, 42, 17, 120, 8, hpPct, hpPct > 0.5 ? '#4cd94c' : hpPct > 0.25 ? '#f0c020' : '#e03020', '#3a0a0a');
+      const hpCol = hpPct > 0.5 ? '#3cdb3c' : hpPct > 0.25 ? '#f0c020' : '#e03020';
+      D.arcadeBar(ctx, 42, 17, 122, 9, hpPct, this.playerGhostHp / p.maxHp, hpCol, '#ff9922', '#22080a');
       // lives
-      for (let i = 0; i < Math.max(0, p.lives - 1); i++) { D.circle(ctx, 172 + i * 12, 21, 4.5, '#e0a878', S.OUT); ctx.fillStyle = '#eee'; ctx.fillRect(169 + i * 12, 22, 6, 1.5); }
-      T.draw(ctx, `x${Math.max(0, p.lives - 1)}`, 172 + Math.max(0, p.lives - 1) * 12 + 2, 17, { size: 7, color: '#fff' });
+      for (let i = 0; i < Math.max(0, p.lives - 1); i++) { D.circle(ctx, 174 + i * 12, 21, 4.5, '#e0a878', S.OUT); ctx.fillStyle = '#eee'; ctx.fillRect(171 + i * 12, 22, 6, 1.5); }
+      T.draw(ctx, `x${Math.max(0, p.lives - 1)}`, 174 + Math.max(0, p.lives - 1) * 12 + 2, 17, { size: 7, color: '#fff' });
       // fart meter
       const full = p.fart >= p.fartMax;
       const pulse = full ? 0.6 + Math.sin(this.t * 10) * 0.4 : 1;
       T.draw(ctx, 'VOLCANO FART', 42, 29, { size: 6, color: full ? `rgba(160,255,80,${pulse})` : '#9f3' });
-      D.bar(ctx, 118, 30, 100, 6, p.fart / p.fartMax, full ? `rgba(160,255,80,${pulse})` : '#7ad83a', '#12300a');
-      if (full && Math.floor(this.t * 5) % 2 === 0) {
-        const hint = WL.input.touchEnabled ? 'TAP' : (WL.input.gamepad.connected ? 'B' : 'F');
-        T.draw(ctx, hint, 222, 28, { size: 7, color: '#d8ff8a' });
+      D.bar(ctx, 124, 29, 94, 7, p.fart / p.fartMax, full ? `rgba(160,255,80,${pulse})` : '#7ad83a', '#12300a');
+      if (full) {
+        if (Math.floor(this.t * 6) % 2 === 0) {
+          D.fillRRect(ctx, 222, 28, 28, 9, 2, '#ffe14a', '#12300a');
+          T.draw(ctx, 'MAX', 236, 29, { size: 6, align: 'center', color: '#111', shadow: false });
+        }
       }
       // toolbox indicator
-      if (p.hasToolbox) { S.tool(ctx, 'toolbox', 246, 20, 0); }
+      if (p.hasToolbox) { S.tool(ctx, 'toolbox', 256, 20, 0); }
       // score
       T.draw(ctx, 'SCORE', W - 8, 6, { size: 7, align: 'right', color: '#ffe14a' });
       T.draw(ctx, U.pad(p.score, 7), W - 8, 16, { size: 10, align: 'right', color: '#fff' });
       const temp = L.temp != null ? L.temp : 72;
       const hot = temp >= 90 ? '#ff5a3a' : temp >= 80 ? '#ffb020' : '#8fd4ff';
       T.draw(ctx, `${L.short || L.name}  ${temp}°F`, W - 8, 31, { size: 6, align: 'right', color: hot });
-      // stage progress
+      // stage progress & coin-op wave indicator
       const prog = U.clamp(this.camX / Math.max(1, L.length - W), 0, 1);
-      D.bar(ctx, W / 2 - 60, 38, 120, 3, prog, '#ffe14a', '#333');
+      D.bar(ctx, W / 2 - 60, 36, 120, 3, prog, '#ffe14a', '#333');
+      const totalWaves = L.waves ? L.waves.length : 1;
+      const currentWaveNum = Math.min(this.waveIdx + 1, totalWaves);
+      T.draw(ctx, `STAGE ${L.id} • WAVE ${currentWaveNum}/${totalWaves}`, W / 2, 25, { size: 6, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+
       // combo — ranks, not a generic "FIGHT"
       const comboY = this.boss ? 116 : 52;
       if (this.bannerT <= 0 && p.comboCount >= 2 && p.comboDisplayT > 0) {
-        const pop = 1 + (p.comboPop || 0) * 0.28;
+        const pop = 1 + (p.comboPop || 0) * 0.35;
         const rank = (WL.voice && WL.voice.comboRank(p.comboCount)) || '';
         const tool = p.lastToolT > 0 && WL.voice ? WL.voice.toolName(p.lastTool) : '';
         ctx.save();
         ctx.translate(18, comboY);
         ctx.scale(pop, pop);
-        const col = p.comboCount >= 12 ? '#ff7ad4' : p.comboCount >= 8 ? '#fff' : '#ffe14a';
-        T.draw(ctx, `${p.comboCount} HITS`, 0, 0, { size: p.comboCount >= 10 ? 16 : 13, color: col, stroke: '#000', strokeWidth: 4 });
-        if (rank) T.draw(ctx, rank, 0, 16, { size: 7, color: '#f9c', stroke: '#000', strokeWidth: 3 });
-        if (tool) T.draw(ctx, tool, 0, rank ? 28 : 16, { size: 6, color: '#fff', stroke: '#000', strokeWidth: 3 });
+        ctx.fillStyle = 'rgba(255,80,180,0.25)';
+        ctx.fillRect(-2, -2, 90, 24);
+        const col = p.comboCount >= 12 ? '#ff6ed2' : p.comboCount >= 8 ? '#fff680' : '#ffe14a';
+        T.draw(ctx, `${p.comboCount} HITS!`, 0, 0, { size: p.comboCount >= 10 ? 17 : 14, color: col, stroke: '#000', strokeWidth: 5 });
+        if (rank) {
+          D.fillRRect(ctx, 0, 18, T.width(ctx, rank, 7) + 8, 12, 2, 'rgba(0,0,0,0.7)', '#ff7ad4');
+          T.draw(ctx, rank, 4, 20, { size: 7, color: '#ffb3e6', shadow: false });
+        }
+        if (tool) T.draw(ctx, tool, 0, rank ? 32 : 18, { size: 6, color: '#ffffff', stroke: '#000', strokeWidth: 3 });
         ctx.restore();
       }
       if (this.bannerT <= 0 && this.cards.length) {
@@ -781,13 +897,25 @@
       if (this.bannerT > 0 && this.banner) {
         const big = !!this.banner.big;
         const k = Math.min(1, this.bannerT * 2);
-        const y = big ? 108 : 74;
-        const h = big ? 64 : 38;
+        const y = big ? 104 : 70;
+        const h = big ? 68 : 42;
         ctx.save(); ctx.globalAlpha = k;
-        ctx.fillStyle = big ? 'rgba(0,0,0,0.62)' : 'rgba(0,0,0,0.5)';
+        ctx.fillStyle = big ? 'rgba(10,5,0,0.86)' : 'rgba(8,12,24,0.84)';
         ctx.fillRect(0, y, W, h);
-        T.draw(ctx, this.banner.a, W / 2, y + (big ? 6 : 3), { size: big ? 16 : 12, align: 'center', gradient: ['#fff3a0', '#ffb300', '#e0301e'], stroke: '#000', strokeWidth: big ? 5 : 4 });
-        T.draw(ctx, this.banner.b, W / 2, y + (big ? 32 : 20), { size: big ? 8 : 7, align: 'center', color: '#fff', stroke: '#000', strokeWidth: 3 });
+        ctx.fillStyle = '#d4af37';
+        ctx.fillRect(0, y, W, 3);
+        ctx.fillRect(0, y + h - 3, W, 3);
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        for (let bx = 0; bx < W; bx += 18) {
+          ctx.beginPath();
+          ctx.moveTo(bx, y); ctx.lineTo(bx + 8, y); ctx.lineTo(bx + 4, y + 3); ctx.lineTo(bx - 4, y + 3);
+          ctx.closePath(); ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(bx, y + h - 3); ctx.lineTo(bx + 8, y + h - 3); ctx.lineTo(bx + 4, y + h); ctx.lineTo(bx - 4, y + h);
+          ctx.closePath(); ctx.fill();
+        }
+        T.draw(ctx, this.banner.a, W / 2, y + (big ? 8 : 4), { size: big ? 18 : 13, align: 'center', gradient: ['#ffffff', '#ffd23f', '#ff4d00'], stroke: '#000', strokeWidth: big ? 6 : 4 });
+        T.draw(ctx, this.banner.b, W / 2, y + (big ? 36 : 22), { size: big ? 9 : 7, align: 'center', color: '#fff9e0', stroke: '#000', strokeWidth: 3 });
         ctx.restore();
       }
       if (this.phase === 'dead') { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H); T.draw(ctx, 'LANCE HIT THE DECK', W / 2, 150, { size: 16, align: 'center', color: '#e03020', stroke: '#000', strokeWidth: 5 }); }
