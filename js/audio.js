@@ -149,7 +149,13 @@ WL.audio = (function () {
     },
     gameOver() { [440, 415, 392, 370, 349, 330, 220].forEach((n, i) => tone({ f0: n, dur: 0.3, delay: i * 0.22, vol: 0.25, type: 'triangle' })); },
     oneUp() { [660, 880, 1100, 1320].forEach((n, i) => tone({ f0: n, dur: 0.14, delay: i * 0.08, vol: 0.2 })); },
-    break() { noise({ f0: 2500, f1: 300, dur: 0.3, vol: 0.4 }); tone({ f0: 800, f1: 200, dur: 0.15, vol: 0.2, type: 'square' }); }
+    break() { noise({ f0: 2500, f1: 300, dur: 0.3, vol: 0.4 }); tone({ f0: 800, f1: 200, dur: 0.15, vol: 0.2, type: 'square' }); },
+    shatter() { noise({ f0: 3800, f1: 600, dur: 0.28, vol: 0.45, filter: 'highpass' }); tone({ f0: 1600, f1: 400, dur: 0.12, vol: 0.22, type: 'square' }); },
+    clatter() { noise({ f0: 2000, f1: 400, dur: 0.22, vol: 0.35, filter: 'bandpass' }); tone({ f0: 520, f1: 180, dur: 0.15, vol: 0.25, type: 'triangle' }); },
+    whoosh() { noise({ f0: 1200, f1: 180, dur: 0.28, vol: 0.28, filter: 'lowpass', attack: 0.04 }); },
+    waveClear() {
+      [659, 880, 1046, 1318].forEach((n, i) => tone({ f0: n, dur: 0.14, delay: i * 0.07, vol: 0.28, type: 'square' }));
+    }
   };
 
   /* ---------- Music: step sequencer ---------- */

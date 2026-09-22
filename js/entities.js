@@ -240,7 +240,12 @@
         const hw = e.isBoss ? 40 : 12;
         if (dx > -(box.back || 0) - hw && dx < box.reach + hw && dy < 26 && Math.abs(e.z - this.z) < (box.zTol || 40)) {
           e.hurt(box.dmg, this.x, { knockdown: box.knockdown, kb: box.kb });
-          this.g.fx.spark(e.x - this.facing * 6, e.y - e.height * 0.6 - e.z, box.knockdown);
+          const hitX = e.x - this.facing * 6;
+          const hitY = e.y - e.height * 0.55 - e.z;
+          this.g.fx.spark(hitX, hitY, box.knockdown);
+          this.g.fx.foodDebris(hitX, hitY, e.type);
+          this.g.fx.impactRing(hitX, hitY, box.knockdown);
+          if (this.g.triggerHitFlash) this.g.triggerHitFlash(box.knockdown ? 0.05 : 0.03);
           n++;
         }
       }
@@ -363,13 +368,16 @@
     draw(ctx, camX) {
       const sx = Math.round(this.x - camX), sy = Math.round(this.y);
       if (this.state === 'gone') return;
-      WL.draw.shadow(ctx, sx, sy, 20, 6);
+      WL.draw.shadow(ctx, sx, sy, 20, 6, this.z);
       const blink = this.invuln > 0 && !['down', 'dead', 'fart', 'fartCharge'].includes(this.state) && Math.floor(this.t * 20) % 2 === 0;
       S.drawLance(ctx, sx, sy - this.z, { pose: this.pose(), t: this.t, facing: this.facing, flash: this.flash > 0, alpha: blink ? 0.45 : 1 });
       if (this.state === 'attack' && this.attack) {
         const a = this.attack;
         const u = (this.stateT - (a.windUntil || 0)) / Math.max(0.05, a.dur - (a.windUntil || 0));
         if (u > 0 && u < 1) S.drawSlash(ctx, sx, sy - 48 - this.z, this.facing, a.pose, u);
+      }
+      if (this.state === 'jumpkick') {
+        S.drawSlash(ctx, sx + this.facing * 16, sy - 30 - this.z, this.facing, 'jumpkick', 0.5);
       }
       if (this.state === 'spray' && this.stateT > 0.08) S.drawSprayCone(ctx, sx + this.facing * 30, sy - 56, this.facing, this.t, 100);
       if (this.state === 'fartCharge') {
@@ -654,7 +662,7 @@
         case 'roll': return 'roll';
         case 'spit': return 'spit';
         case 'hurt': return 'hurt';
-        case 'down': return this.z > 0 ? 'hurt' : 'down';
+        case 'down': return this.z > 0 ? 'knockdown' : 'down';
         case 'dead': return 'dead';
         case 'stunned': return 'stunned';
         case 'grabbed': return 'grabbed';
@@ -669,7 +677,7 @@
       ctx.globalAlpha = this.elite ? 0.9 : 0.72;
       WL.draw.ellipse(ctx, sx, sy + 1, Math.max(12, this.height * 0.24), 5.5, plate, this.elite ? '#ffe14a' : '#141428');
       ctx.restore();
-      WL.draw.shadow(ctx, sx, sy, this.height * 0.28, this.height * 0.09);
+      WL.draw.shadow(ctx, sx, sy, this.height * 0.28, this.height * 0.09, this.z);
       const alpha = this.dead ? Math.max(0, 1 - (this.stateT - 0.4) * 2) : (this.state === 'spawn' ? this.stateT * 2 : 1);
       S.drawEnemy(ctx, sx, sy - this.z, { type: this.type, pose: this.pose(), t: this.t, facing: this.facing, flash: this.flash > 0 || (this.dead && Math.floor(this.t * 30) % 2 === 0), alpha, taped: this.state === 'grabbed', stunTint: this.state === 'stunned' });
       if (this.elite) WL.text.draw(ctx, 'ELITE', sx, sy - this.z - this.height - 14, { size: 6, align: 'center', color: '#fc6', stroke: '#000', strokeWidth: 2 });
@@ -851,7 +859,7 @@
     }
     draw(ctx, camX) {
       const sx = Math.round(this.x - camX), sy = Math.round(this.y);
-      WL.draw.shadow(ctx, sx, sy, 50, 14);
+      WL.draw.shadow(ctx, sx, sy, 50, 14, this.z);
       ctx.save();
       if (this.dead) { ctx.globalAlpha = Math.max(0, 1 - Math.max(0, this.stateT - 2) * 0.9); }
       S.drawBoss(ctx, sx, sy - this.z, { pose: this.pose(), t: this.t, facing: this.facing, flash: this.flash > 0, armor: this.armor, phase: this.phase, melt: this.melt });
@@ -874,7 +882,7 @@
     }
     draw(ctx, camX) {
       const sx = Math.round(this.x - camX), sy = Math.round(this.y);
-      WL.draw.shadow(ctx, sx, sy, 10, 3);
+      WL.draw.shadow(ctx, sx, sy, 10, 3, this.z);
       S.drawPickup(ctx, sx, sy - this.z, this.kind, this.t);
     }
   }
@@ -885,25 +893,44 @@
   class Breakable {
     constructor(g, kind, x, y, contents) {
       this.g = g; this.kind = kind; this.x = x; this.y = y; this.z = 0;
-      this.hp = kind === 'vending' ? 4 : kind === 'crate' ? 3 : 2;
-      this.contents = contents || [U.pick(['beans', 'chili', 'leftovers', 'burger'])];
+      this.hp = kind === 'plates' ? 1 : (kind === 'tray' || kind === 'chair') ? 2 : kind === 'vending' ? 4 : kind === 'crate' ? 3 : 2;
+      this.contents = contents || (['plates', 'chair'].includes(kind) ? (U.chance(0.5) ? [U.pick(['chip', 'beans'])] : []) : [U.pick(['beans', 'chili', 'leftovers', 'burger'])]);
       this.dead = false; this.remove = false; this.t = 0; this.shakeT = 0;
-      this.height = kind === 'vending' ? 70 : 36;
+      this.height = kind === 'vending' ? 70 : (kind === 'chair' ? 44 : 36);
     }
     hit(g, n) {
       if (this.dead) return;
-      this.hp -= n; this.shakeT = 0.15; WL.audio.sfx.clank();
+      this.hp -= n; this.shakeT = 0.15;
+      if (this.kind === 'plates') WL.audio.sfx.clank();
+      else if (this.kind === 'tray') WL.audio.sfx.clatter();
+      else WL.audio.sfx.clank();
       if (this.hp <= 0) {
-        this.dead = true; this.remove = true; WL.audio.sfx.break(); g.shake(2, 0.1);
-        g.fx.debris(this.x, this.y - 20, this.kind);
+        this.dead = true; this.remove = true;
+        if (this.kind === 'plates') WL.audio.sfx.shatter();
+        else if (this.kind === 'tray') WL.audio.sfx.clatter();
+        else WL.audio.sfx.break();
+        g.shake(2.5, 0.12);
+        g.fx.debris(this.x, this.y - 18, this.kind);
         this.contents.forEach((c, i) => setTimeout(() => g.spawnPickup(c, this.x + (i - (this.contents.length - 1) / 2) * 24, this.y, true), i * 60));
         g.player.addScore(50);
       }
     }
-    update(dt) { this.t += dt; if (this.shakeT > 0) this.shakeT -= dt; }
+    update(dt) {
+      this.t += dt; if (this.shakeT > 0) this.shakeT -= dt;
+      // Walk through / sprint through breakable props (buffet trays, plates, chairs)
+      if (!this.dead && ['plates', 'tray', 'chair'].includes(this.kind)) {
+        const p = this.g.player;
+        if (p && !p.dead) {
+          const dx = Math.abs(p.x - this.x), dy = Math.abs(p.y - this.y);
+          if (dx < 20 && dy < 14 && (Math.abs(p.vx) > 25 || Math.abs(p.vy) > 20 || p.state === 'walk')) {
+            this.hit(this.g, 2);
+          }
+        }
+      }
+    }
     draw(ctx, camX) {
       const sx = Math.round(this.x - camX) + (this.shakeT > 0 ? Math.round(Math.sin(this.t * 80) * 2) : 0), sy = Math.round(this.y);
-      WL.draw.shadow(ctx, sx, sy, 24, 6);
+      WL.draw.shadow(ctx, sx, sy, this.kind === 'plates' ? 16 : 24, 6, this.z);
       S.drawObject(ctx, sx, sy, this.kind, this.hp, this.t);
     }
   }

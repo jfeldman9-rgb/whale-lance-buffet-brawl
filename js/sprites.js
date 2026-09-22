@@ -268,7 +268,10 @@ WL.sprites = (function () {
     f.fillStyle = '#fff';
     f.fillRect(0, 0, flashCanvas.width, flashCanvas.height);
     f.globalCompositeOperation = 'source-over';
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(flashCanvas, x - ox, y - oy, FLASH_W, FLASH_H);
+    ctx.imageSmoothingEnabled = smooth;
   }
 
   /**
@@ -298,6 +301,15 @@ WL.sprites = (function () {
     const hipY = -34;
     const shoulderY = -70;
     const headY = -92;
+
+    // Soft contrast silhouette backing for readability against busy dining backgrounds
+    if (pose !== 'down' && pose !== 'dead') {
+      ctx.save();
+      ctx.globalAlpha = (o.alpha !== undefined ? o.alpha : 1) * 0.32;
+      D.ellipse(ctx, lean * 0.4, -48, bodyW * 0.62 + 3, 38, 'rgba(10,12,22,0.85)');
+      D.circle(ctx, lean * 0.6, headY + 12, 19, 'rgba(10,12,22,0.85)');
+      ctx.restore();
+    }
 
     // leg positions (feet)
     let lf = { x: -8, y: 0 }, rf = { x: 8, y: 0 };
@@ -526,7 +538,7 @@ WL.sprites = (function () {
       case 'attack': r.lean = 8; r.crouch = 2; r.lf.x -= 6; r.rf.x += 8; r.fe = { x: spread + 14, y: shoulderY + 4 }; r.fh = { x: spread + 30, y: shoulderY + 2 }; break;
       case 'kick': r.lean = 4; r.rf = { x: spread + 26, y: -hipY * 0.6 }; r.fe = { x: spread + 6, y: shoulderY }; r.fh = { x: spread - 2, y: shoulderY - 10 }; break;
       case 'hurt': r.lean = -8; r.fe = { x: spread + 6, y: shoulderY - 6 }; r.fh = { x: spread + 10, y: shoulderY - 16 }; r.be = { x: -spread - 6, y: shoulderY - 6 }; r.bh2 = { x: -spread - 12, y: shoulderY - 14 }; break;
-      case 'down': case 'dead': case 'thrown': r.lying = true; break;
+      case 'down': case 'dead': case 'thrown': case 'knockdown': r.lying = true; break;
       case 'grabbed': r.lean = 2; r.fe = { x: spread + 4, y: shoulderY + 10 }; r.fh = { x: spread - 2, y: shoulderY + 2 }; r.be = { x: -spread - 4, y: shoulderY + 10 }; r.bh2 = { x: -spread + 2, y: shoulderY + 2 }; break;
       case 'stunned': r.lean = -3; r.bob = Math.sin(t * 12) * 1.5; r.fh.y += 6; r.bh2.y += 6; break;
       case 'dash': r.lean = 12; r.crouch = 6; r.lf.x -= 12; r.rf.x += 12; r.fe = { x: -spread - 8, y: shoulderY + 6 }; r.fh = { x: -spread - 18, y: shoulderY + 14 }; r.be = { x: spread + 8, y: shoulderY + 6 }; r.bh2 = { x: spread + 20, y: shoulderY + 10 }; break;
@@ -729,10 +741,20 @@ WL.sprites = (function () {
     if (e.alpha !== undefined) ctx.globalAlpha = e.alpha;
     const hipY = -V.h * 0.4, shoulderY = -V.h * 0.72;
     const r = rig(e.pose, e.t || 0, hipY, shoulderY, V.h * 0.12);
+    // Soft contrast silhouette backing for enemy readability
+    if (!r.lying && e.pose !== 'down' && e.pose !== 'dead') {
+      ctx.save();
+      ctx.globalAlpha = (e.alpha !== undefined ? e.alpha : 1) * 0.32;
+      D.ellipse(ctx, 0, -V.h * 0.48, V.h * 0.32, V.h * 0.46, 'rgba(10,12,22,0.85)');
+      ctx.restore();
+    }
     if (r.lying) {
       ctx.save();
       ctx.translate(0, -8);
-      ctx.rotate(-Math.PI / 2 + (e.pose === 'thrown' ? (e.t || 0) * 12 : 0.1));
+      let rot = -Math.PI / 2 + 0.1;
+      if (e.pose === 'thrown') rot = -Math.PI / 2 + (e.t || 0) * 14;
+      else if (e.pose === 'knockdown') rot = -0.7 - Math.sin((e.t || 0) * 8) * 0.5;
+      ctx.rotate(rot);
       const rr = rig('hurt', 0, hipY, shoulderY, V.h * 0.12);
       enemyDrawers[e.type](ctx, e, rr);
       ctx.restore();
@@ -959,6 +981,38 @@ WL.sprites = (function () {
         D.fillRRect(ctx, -12, -20, 24, 20, 3, '#a05a2a', OUT);
         for (let i = 0; i < 5; i++) { ctx.save(); ctx.translate(0, -20); ctx.rotate(-1 + i * 0.5); D.ellipse(ctx, 0, -16, 5, 16, '#3a9a3a', OUT); ctx.restore(); }
         break;
+      case 'plates': // Stack of ceramic buffet plates with gold rim
+        D.ellipse(ctx, 0, -2, 16, 5, '#1e2430', OUT); // stand base
+        D.fillRRect(ctx, -2, -26, 4, 24, 1, '#94a0b4', OUT); // chrome rod holder
+        for (let p = 0; p < 6; p++) {
+          const py = -6 - p * 3.5;
+          D.ellipse(ctx, 0, py, 15, 4.5, '#ffffff', '#222');
+          ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.ellipse(0, py, 13.5, 3.8, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.fillStyle = 'rgba(255,255,255,0.7)';
+          ctx.fillRect(-6, py - 1, 12, 1);
+        }
+        break;
+      case 'tray': // Buffet chafing dish with stainless steel dome lid & burner
+        D.fillRRect(ctx, -18, -8, 36, 8, 2, '#485060', OUT);
+        ctx.fillStyle = Math.sin(t * 12) > 0 ? '#ff8c1a' : '#3399ff';
+        D.ellipse(ctx, 0, -5, 5, 3, ctx.fillStyle);
+        D.fillRRect(ctx, -24, -20, 48, 14, 3, '#cdd3de', OUT);
+        ctx.fillStyle = '#8f98a8'; ctx.fillRect(-24, -13, 48, 2);
+        ctx.beginPath(); ctx.arc(0, -18, 18, Math.PI, 0); ctx.closePath();
+        ctx.fillStyle = '#e4e8f0'; ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.stroke();
+        D.fillRRect(ctx, -6, -38, 12, 4, 1, '#d4af37', OUT);
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath(); ctx.arc(0, -18, 14, Math.PI * 1.15, Math.PI * 1.5); ctx.stroke();
+        break;
+      case 'chair': // Cruise ship dining chair (mahogany with burgundy velvet cushion)
+        ctx.fillStyle = '#4a2612'; ctx.fillRect(-10, -22, 3, 22); ctx.fillRect(7, -22, 3, 22);
+        D.fillRRect(ctx, -13, -16, 26, 8, 3, '#881b24', OUT);
+        ctx.fillStyle = '#d4af37'; ctx.fillRect(-12, -16, 24, 1.5);
+        ctx.fillStyle = '#6a3818'; ctx.fillRect(-12, -9, 3.5, 9); ctx.fillRect(8.5, -9, 3.5, 9);
+        D.fillRRect(ctx, -10, -42, 20, 24, 3, '#5c2f15', OUT);
+        D.fillRRect(ctx, -7, -39, 14, 18, 2, '#881b24', '#3c1014');
+        break;
     }
     if (dmg) { ctx.strokeStyle = OUT; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-6, -30); ctx.lineTo(0, -18); ctx.lineTo(-4, -8); ctx.stroke(); }
     ctx.restore();
@@ -980,6 +1034,19 @@ WL.sprites = (function () {
         D.fillRRect(ctx, -6, -2.5, 12, 5, 2.5, p.color || '#ff4a4a', OUT);
         break;
       case 'toolbox':
+        // Weighty motion blur ghost trail
+        const tvx = p.vx || 320;
+        const trailDir = Math.sign(tvx) || 1;
+        ctx.save();
+        for (let t = 1; t <= 3; t++) {
+          ctx.save();
+          ctx.translate(-trailDir * t * 14, t * 4);
+          ctx.rotate((p.t - t * 0.03) * 12);
+          ctx.globalAlpha = 0.35 - t * 0.1;
+          tool(ctx, 'toolbox', 0, 0, 0);
+          ctx.restore();
+        }
+        ctx.restore();
         ctx.rotate(p.t * 12);
         tool(ctx, 'toolbox', 0, 0, 0);
         break;
@@ -998,24 +1065,48 @@ WL.sprites = (function () {
 
   function drawSprayCone(ctx, x, y, facing, t, len) {
     ctx.save(); ctx.translate(x, y); if (facing < 0) ctx.scale(-1, 1);
-    const L = len || 90;
+    const L = len || 95;
+    // Layered swirling refrigerant vapor vortex
     const g = ctx.createLinearGradient(0, 0, L, 0);
-    g.addColorStop(0, 'rgba(180,240,255,0.85)'); g.addColorStop(1, 'rgba(180,240,255,0)');
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(L, -26); ctx.lineTo(L + 8, 0); ctx.lineTo(L, 26); ctx.closePath();
+    g.addColorStop(0, 'rgba(210,250,255,0.95)');
+    g.addColorStop(0.4, 'rgba(120,230,255,0.65)');
+    g.addColorStop(1, 'rgba(80,190,255,0)');
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(L, -28); ctx.lineTo(L + 12, 0); ctx.lineTo(L, 28); ctx.closePath();
     ctx.fillStyle = g; ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    for (let i = 0; i < 12; i++) { const fx = ((t * 260 + i * 37) % L); const fy = Math.sin(i * 2.1 + t * 20) * fx * 0.25; ctx.fillRect(fx, fy - 1.5, 3, 3); }
+
+    // Swirling ice vortex arc streaks
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2;
+    for (let s = 0; s < 3; s++) {
+      const swX = (t * 180 + s * 30) % L;
+      const swR = 8 + swX * 0.22;
+      ctx.beginPath();
+      ctx.arc(swX, 0, swR, -Math.PI * 0.6 + s, Math.PI * 0.6 + s);
+      ctx.stroke();
+    }
+
+    // Ice crystal flakes
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 16; i++) {
+      const fx = ((t * 280 + i * 31) % L);
+      const fy = Math.sin(i * 2.3 + t * 24) * fx * 0.28;
+      ctx.fillRect(fx, fy - 1.5, 3, 3);
+    }
     ctx.restore();
   }
 
   function drawHitSpark(ctx, x, y, t, big) {
     ctx.save(); ctx.translate(x, y);
-    const s = (big ? 1.6 : 1) * (1 + t * 2);
-    ctx.scale(s, s); ctx.rotate(t * 3);
-    ctx.fillStyle = big ? '#ffe14a' : '#fff'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5 / s;
+    const s = (big ? 1.7 : 1.1) * (1 + t * 2.5);
+    ctx.scale(s, s); ctx.rotate(t * 4);
+    ctx.fillStyle = big ? '#ffe14a' : '#ffffff'; ctx.strokeStyle = OUT; ctx.lineWidth = 1.5 / s;
     ctx.beginPath();
-    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; const r = i % 2 ? 4 : 11; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; const r = i % 2 ? 4 : 12; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
     ctx.closePath(); ctx.fill(); ctx.stroke();
+    // Inner brilliant core
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; ctx.lineTo(Math.cos(a) * 5, Math.sin(a) * 5); ctx.lineTo(Math.cos(a + 0.4) * 2, Math.sin(a + 0.4) * 2); }
+    ctx.closePath(); ctx.fill();
     ctx.restore();
   }
 
@@ -1029,23 +1120,37 @@ WL.sprites = (function () {
   function drawFartCloud(ctx, x, y, t, facing) {
     ctx.save();
     const T = Math.min(1, t / 1.05);
-    for (let i = 0; i < 3; i++) {
-      const lt = t - i * 0.06;
+    // Expanding green/gold energy shock rings
+    for (let i = 0; i < 4; i++) {
+      const lt = t - i * 0.05;
       if (lt <= 0) continue;
-      const R = 24 + lt * 520;
-      ctx.globalAlpha = Math.max(0, 0.9 - lt * 0.75);
-      ctx.strokeStyle = i === 0 ? '#f6ffe4' : (i === 1 ? '#c6ff4a' : '#5f8f22');
-      ctx.lineWidth = Math.max(2, 12 - lt * 8);
+      const R = 28 + lt * 540;
+      ctx.globalAlpha = Math.max(0, 0.95 - lt * 0.75);
+      ctx.strokeStyle = i === 0 ? '#ffffff' : (i === 1 ? '#c6ff4a' : (i === 2 ? '#ffea4a' : '#5f8f22'));
+      ctx.lineWidth = Math.max(2, 14 - lt * 9);
       ctx.beginPath();
-      ctx.ellipse(x, y - 16, R, R * 0.36, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y - 16, R, R * 0.38, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
+    // Radiant burst rays
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 0.75 - t * 1.2);
+    ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 3;
+    for (let a = 0; a < 8; a++) {
+      const ang = (a * Math.PI) / 4 + t * 3;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(ang) * 20, y - 24 + Math.sin(ang) * 12);
+      ctx.lineTo(x + Math.cos(ang) * (60 + t * 120), y - 24 + Math.sin(ang) * (36 + t * 70));
+      ctx.stroke();
+    }
+    ctx.restore();
+
     ctx.globalAlpha = Math.max(0, 0.9 - t * 1.5);
-    D.circle(ctx, x - (facing || 1) * 8, y - 26, 16 + t * 36, '#e8ff9a');
-    ctx.globalAlpha = Math.max(0, 0.55 - t * 0.7);
-    D.circle(ctx, x - (facing || 1) * 14, y - 18, 10 + t * 22, '#c8a15a');
-    for (let i = 0; i < 16; i++) {
-      const a = i * 0.85 + t * 2.2, d = 16 + (i % 5) * 14 + T * 240;
+    D.circle(ctx, x - (facing || 1) * 8, y - 26, 18 + t * 40, '#e8ff9a');
+    ctx.globalAlpha = Math.max(0, 0.6 - t * 0.7);
+    D.circle(ctx, x - (facing || 1) * 14, y - 18, 12 + t * 24, '#c8a15a');
+    for (let i = 0; i < 18; i++) {
+      const a = i * 0.85 + t * 2.2, d = 16 + (i % 5) * 14 + T * 250;
       const px = x + Math.cos(a) * d, py = y - 28 + Math.sin(a) * d * 0.32 - T * 30;
       ctx.globalAlpha = Math.max(0, 0.8 - T);
       D.circle(ctx, px, py, 6 + (i % 4) * 3, i % 3 === 0 ? '#6b4a2a' : (i % 3 === 1 ? '#8bd04a' : '#d8ff8a'));
@@ -1060,21 +1165,89 @@ WL.sprites = (function () {
     ctx.globalAlpha = Math.max(0, 1 - u) * 0.95;
     const heavy = pose === 'sweep';
     const mid = pose === 'smash';
-    ctx.strokeStyle = heavy ? '#ffe14a' : (mid ? '#fff6d0' : '#fff');
-    ctx.lineWidth = heavy ? 6 : (mid ? 4.5 : 3);
-    ctx.lineCap = 'round';
-    const a0 = heavy ? -0.15 : -1.15;
-    const sweep = heavy ? 1.15 : 1.35;
-    const a = a0 + sweep * u;
-    const r = heavy ? 50 : 36;
-    ctx.beginPath();
-    ctx.arc(12, 0, r, a - 0.85, a + 0.15);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(12, 0, r - 6, a - 0.55, a);
-    ctx.stroke();
+    const jab = pose === 'jab';
+    const kick = pose === 'jumpkick';
+
+    if (jab) {
+      // Screwdriver rapid precision thrust streak: multi-line neon cyan/white speed lines
+      const len = 42 + u * 28;
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#5de6ff';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(10, 0); ctx.lineTo(10 + len, 0);
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(18, 0); ctx.lineTo(10 + len + 6, 0);
+      ctx.moveTo(12, -7); ctx.lineTo(12 + len * 0.75, -7);
+      ctx.moveTo(12, 7); ctx.lineTo(12 + len * 0.75, 7);
+      ctx.stroke();
+    } else if (kick) {
+      // Jumpkick horizontal heavy impact wake
+      const len = 48;
+      ctx.fillStyle = 'rgba(255,220,100,0.45)';
+      ctx.beginPath();
+      ctx.moveTo(6, -14); ctx.lineTo(6 + len, 0); ctx.lineTo(6, 14);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(16, -5); ctx.lineTo(16 + len, -5);
+      ctx.moveTo(12, 5); ctx.lineTo(12 + len, 5);
+      ctx.stroke();
+    } else {
+      // Slash arc (smash or sweep)
+      const a0 = heavy ? -0.35 : -1.25;
+      const sweep = heavy ? 1.55 : 1.45;
+      const a = a0 + sweep * u;
+      const r = heavy ? 56 : 40;
+      const width = heavy ? 14 : 9;
+
+      // Outer wide soft glow arc
+      ctx.beginPath();
+      ctx.arc(14, 0, r, a - 0.95, a + 0.15);
+      ctx.strokeStyle = heavy ? 'rgba(255,100,20,0.35)' : 'rgba(255,210,60,0.3)';
+      ctx.lineWidth = width + 6;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Main vibrant energy crescent ribbon
+      ctx.beginPath();
+      ctx.arc(14, 0, r + width * 0.5, a - 0.85, a + 0.15, false);
+      ctx.arc(14, 0, r - width * 0.5, a + 0.15, a - 0.85, true);
+      ctx.closePath();
+      const slashGrad = ctx.createRadialGradient(14, 0, r - width, 14, 0, r + width);
+      if (heavy) {
+        slashGrad.addColorStop(0, 'rgba(255,60,10,0)');
+        slashGrad.addColorStop(0.5, '#ffaa00');
+        slashGrad.addColorStop(1, '#ffffff');
+      } else {
+        slashGrad.addColorStop(0, 'rgba(255,180,30,0)');
+        slashGrad.addColorStop(0.5, '#ffe14a');
+        slashGrad.addColorStop(1, '#ffffff');
+      }
+      ctx.fillStyle = slashGrad;
+      ctx.fill();
+
+      // Brilliant sharp white core streak
+      ctx.beginPath();
+      ctx.arc(14, 0, r, a - 0.65, a + 0.12);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = heavy ? 4 : 2.5;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Trailing sparks off the blade tip
+      if (heavy) {
+        const tipX = 14 + Math.cos(a + 0.1) * r;
+        const tipY = Math.sin(a + 0.1) * r;
+        ctx.fillStyle = '#fffae0';
+        ctx.fillRect(tipX - 1.5, tipY - 1.5, 3, 3);
+        ctx.fillStyle = '#ff7711';
+        ctx.fillRect(tipX - Math.cos(a) * 6, tipY - Math.sin(a) * 6, 2.5, 2.5);
+      }
+    }
     ctx.restore();
   }
 

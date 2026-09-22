@@ -5,7 +5,8 @@
   const W = WL.W, H = WL.H;
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   const SETTINGS_KEY = 'wl-settings';
   function loadSettings() {
@@ -92,45 +93,63 @@
   };
 
   /* ---- scaling ----
-     Phone / classic: 640x360 backing store, CSS-stretched with nearest-neighbor.
-     Desktop sharp: draw the same 640x360 world into a 2x or 3x backing store so
-     the procedural sprites rasterize at monitor resolution, then display that
-     buffer 1:1 (or smoothly downscaled if the window isn't an integer fit). */
+     The world stays 640x360. The backing store is the CSS box times
+     devicePixelRatio, so the browser shows the bitmap 1:1 instead of
+     stretching a small canvas (that stretch is what looked blurry on
+     retina). Sprites are redrawn in vectors into that buffer, so Lance,
+     the HUD, and the decks pick up the extra pixels. Classic mode keeps
+     the old 640x360 nearest-neighbor picture. */
+  function applyTransform() {
+    const rs = WL.display.renderScale || 1;
+    ctx.setTransform(rs, 0, 0, rs, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+  }
   function resize() {
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const fit = Math.min(vw / W, vh / H);
+    const vw = Math.max(1, window.innerWidth), vh = Math.max(1, window.innerHeight);
     const sharp = wantsSharp();
     WL.display.pc = sharp;
-    let renderScale = 1;
-    let cssW, cssH, smoothing;
-    if (sharp && fit >= 2) {
-      renderScale = Math.min(3, Math.floor(fit));
-      cssW = W * renderScale;
-      cssH = H * renderScale;
-      smoothing = 'pixelated';
-    } else if (sharp && fit >= 1.15) {
-      // Supersample at 2x and let the browser scale down into the window.
-      renderScale = 2;
-      cssW = Math.max(1, Math.floor(W * fit));
-      cssH = Math.max(1, Math.floor(H * fit));
-      smoothing = 'auto';
-    } else {
-      renderScale = 1;
-      cssW = Math.max(1, Math.floor(W * Math.max(fit, 0.01)));
-      cssH = Math.max(1, Math.floor(H * Math.max(fit, 0.01)));
-      smoothing = 'pixelated';
+    const rawDpr = Math.max(1, window.devicePixelRatio || 1);
+    WL.display.dpr = rawDpr;
+
+    let cssW = vw;
+    let cssH = Math.floor(cssW * H / W);
+    if (cssH > vh) {
+      cssH = vh;
+      cssW = Math.floor(cssH * W / H);
     }
+    cssW = Math.max(1, cssW);
+    cssH = Math.max(1, cssH);
+
+    const classic = WL.display.mode === 'classic';
+    let renderScale = 1;
+    let smoothing = 'pixelated';
+    if (!classic) {
+      // Phones cap lower so a 3x panel doesn't allocate a desktop-sized buffer.
+      const dprCap = sharp ? 3 : 2;
+      const maxScale = sharp ? 5 : 2.5;
+      const dpr = Math.min(rawDpr, dprCap);
+      renderScale = Math.min(maxScale, Math.max(1, (cssW * dpr) / W));
+      const deviceW = cssW * rawDpr;
+      const backingW = W * renderScale;
+      // Nearest-neighbor only when we had to draw fewer pixels than the screen.
+      smoothing = backingW < deviceW * 0.92 ? 'pixelated' : 'auto';
+    }
+
+    const bw = Math.max(W, Math.round(W * renderScale));
+    const bh = Math.max(H, Math.round(H * (bw / W)));
+    renderScale = bw / W;
     WL.display.renderScale = renderScale;
-    if (canvas.width !== W * renderScale || canvas.height !== H * renderScale) {
-      canvas.width = W * renderScale;
-      canvas.height = H * renderScale;
+
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
     }
     canvas.style.width = cssW + 'px';
-    canvas.style.height = cssH + 'px';
+    canvas.style.height = Math.max(1, Math.round(cssW * (bh / bw))) + 'px';
     canvas.style.imageRendering = smoothing;
     canvas.classList.toggle('pc', sharp);
-    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
-    ctx.imageSmoothingEnabled = false;
+    applyTransform();
   }
   WL.display.resize = resize;
   WL.display.save = saveSettings;
@@ -155,13 +174,23 @@
     }
   };
   WL.display.modeLabel = function () {
-    const scale = this.renderScale + 'x';
+    const s = this.renderScale || 1;
+    const scale = (Math.abs(s - Math.round(s)) < 0.05 ? String(Math.round(s)) : s.toFixed(1)) + 'x';
     if (this.mode === 'classic') return 'CLASSIC';
     if (this.mode === 'sharp') return 'SHARP ' + scale;
-    return 'AUTO ' + (this.pc ? 'SHARP ' + scale : 'CLASSIC');
+    return 'AUTO ' + scale;
   };
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 100));
+  // Moving the window onto a retina monitor doesn't always fire resize.
+  let dprWatch = null;
+  function bindDprWatch() {
+    if (dprWatch) dprWatch.removeEventListener('change', onDprChange);
+    dprWatch = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    dprWatch.addEventListener('change', onDprChange);
+  }
+  function onDprChange() { resize(); bindDprWatch(); }
+  bindDprWatch();
   document.addEventListener('fullscreenchange', () => {
     WL.display.fullscreen = !!document.fullscreenElement;
     setTimeout(resize, 50);
@@ -214,9 +243,10 @@
     else if (game.nextScene && !game.scene) { game._swap(); }
 
     const rs = WL.display.renderScale || 1;
-    ctx.setTransform(rs, 0, 0, rs, 0, 0);
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, W, H);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    applyTransform();
     if (loading) drawLoading();
     else if (game.scene) {
       if (game.fadeDir !== 1) game.scene.update(dt, WL.input);
