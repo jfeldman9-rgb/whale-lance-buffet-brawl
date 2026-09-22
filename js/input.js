@@ -109,10 +109,31 @@ WL.input = (function () {
 
   let toCanvas = (cx, cy) => ({ x: cx, y: cy });
 
+  function buttonAt(p) {
+    // A visible button always wins over a neighbour's enlarged hit target.
+    for (const padding of [0, 8]) {
+      let nearest = null, distance = Infinity;
+      for (const b of touch.buttons) {
+        const d = Math.hypot(p.x - b.x, p.y - b.y);
+        if (d <= b.r + padding && d < distance) { nearest = b; distance = d; }
+      }
+      if (nearest) return nearest;
+    }
+    return null;
+  }
+
   function pointerDown(e) {
     const p = toCanvas(e.clientX, e.clientY);
     pointer.x = p.x; pointer.y = p.y; pointer.type = e.pointerType || 'mouse';
     if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+      const scene = WL.game && WL.game.scene;
+      const b = scene && scene instanceof WL.scenes.Play && !scene.paused && scene.phase === 'play' && buttonAt(p);
+      if (b) {
+        touch.pointers.set(e.pointerId, { x: p.x, y: p.y, button: b.id });
+        if (e.currentTarget && e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+        press(b.id);
+        return;
+      }
       press('click');
       press('start');
       setTimeout(() => { release('start'); release('click'); }, 40);
@@ -123,12 +144,11 @@ WL.input = (function () {
     if (e.currentTarget && e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
     anyKey = true;
     queue.push('click');
-    for (const b of touch.buttons) {
-      if (Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 8) {
-        touch.pointers.set(e.pointerId, { x: p.x, y: p.y, button: b.id });
-        press(b.id);
-        return;
-      }
+    const b = buttonAt(p);
+    if (b) {
+      touch.pointers.set(e.pointerId, { x: p.x, y: p.y, button: b.id });
+      press(b.id);
+      return;
     }
     if (p.x < WL.W * 0.55 && !touch.joy.active) {
       touch.joy.active = true;
@@ -144,7 +164,7 @@ WL.input = (function () {
     if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
       const p = toCanvas(e.clientX, e.clientY);
       pointer.x = p.x; pointer.y = p.y; pointer.type = e.pointerType || 'mouse';
-      return;
+      if (!touch.pointers.has(e.pointerId)) return;
     }
     const p = toCanvas(e.clientX, e.clientY);
     const info = touch.pointers.get(e.pointerId);
@@ -153,21 +173,21 @@ WL.input = (function () {
     if (touch.joy.active && touch.joy.id === e.pointerId) {
       touch.joy.x = p.x; touch.joy.y = p.y;
     } else if (info.button) {
-      let over = null;
-      for (const b of touch.buttons) if (Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 8) over = b.id;
+      const hit = buttonAt(p);
+      const over = hit && hit.id;
       if (over && over !== info.button) {
-        release(info.button);
+        const previous = info.button;
         info.button = over;
+        syncHeld(previous);
         press(over);
       }
     }
   }
   function pointerUp(e) {
-    if (e.pointerType === 'mouse' || e.pointerType === 'pen') return;
     const info = touch.pointers.get(e.pointerId);
     if (info) {
-      if (info.button) release(info.button);
       touch.pointers.delete(e.pointerId);
+      if (info.button) syncHeld(info.button);
     }
     if (touch.joy.active && touch.joy.id === e.pointerId) {
       touch.joy.active = false; touch.joy.id = null;
@@ -280,6 +300,7 @@ WL.input = (function () {
     canvas.addEventListener('pointermove', pointerMove);
     canvas.addEventListener('pointerup', pointerUp);
     canvas.addEventListener('pointercancel', pointerUp);
+    canvas.addEventListener('lostpointercapture', pointerUp);
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     if (('ontouchstart' in window) || navigator.maxTouchPoints > 0) {
       if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) touch.enabled = true;
@@ -381,12 +402,13 @@ WL.input = (function () {
     const pad = !!gamepad.connected;
     const H = WL.H;
     ctx.save();
+    ctx.globalAlpha = 0.55;
     ctx.lineWidth = 1.5;
 
     // ---- move cluster, bottom left. Plates stay see-through so a goon
     // walking the rail is still visible behind the diagram. ----
     const mx = 8, my = H - 138, mw = 112, mh = 130;
-    WL.draw.fillRRect(ctx, mx, my, mw, mh, 8, 'rgba(6,8,20,0.55)', 'rgba(255,255,255,0.8)');
+    WL.draw.fillRRect(ctx, mx, my, mw, mh, 8, 'rgba(6,8,20,0.08)', 'rgba(255,255,255,0.3)');
     WL.text.draw(ctx, pad ? 'PAD' : 'MOVE', mx + mw / 2, my + 4, {
       size: 7, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 3
     });
@@ -412,12 +434,14 @@ WL.input = (function () {
 
     // Live finger stick, wherever the thumb actually is.
     if (touch.joy.active) {
+      ctx.save(); ctx.globalAlpha = 0.85;
       const j = touch.joy;
       WL.draw.circle(ctx, j.ox, j.oy, 34, 'rgba(255,255,255,0.16)', 'rgba(255,255,255,0.9)');
       let dx = j.x - j.ox, dy = j.y - j.oy;
       const len = Math.hypot(dx, dy);
       if (len > 34) { dx = dx / len * 34; dy = dy / len * 34; }
       WL.draw.circle(ctx, j.ox + dx, j.oy + dy, 16, 'rgba(255,255,255,0.92)', '#141428');
+      ctx.restore();
     }
 
     // ---- fight cluster, bottom right ----
@@ -429,16 +453,18 @@ WL.input = (function () {
         x1 = Math.max(x1, b.x + b.r); y1 = Math.max(y1, b.y + b.r);
       }
       const plateX = x0 - 10, plateY = y0 - 16, plateW = (x1 - x0) + 20, plateH = (y1 - y0) + 26;
-      WL.draw.fillRRect(ctx, plateX, plateY, plateW, plateH, 8, 'rgba(6,8,20,0.5)', 'rgba(255,255,255,0.8)');
+      WL.draw.fillRRect(ctx, plateX, plateY, plateW, plateH, 8, 'rgba(6,8,20,0.08)', 'rgba(255,255,255,0.3)');
       WL.text.draw(ctx, pad ? 'CONTROLLER' : 'KEYS', plateX + plateW / 2, plateY + 3, {
         size: 6, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 3
       });
       for (const b of touch.buttons) {
         const down = !!held[b.id];
-        const disabled = b.id === 'fart' && opts.fartReady === false;
+        ctx.globalAlpha = down ? 1 : 0.55;
+        const boxMissing = b.id === 'tool' && opts.hasToolbox === false;
+        const disabled = (b.id === 'fart' && opts.fartReady === false) || boxMissing;
         const armed = b.id === 'fart' && opts.fartReady;
-        const fill = disabled ? 'rgba(58,58,68,0.85)' : (armed ? 'rgba(136,255,102,0.9)' : hexAlpha(b.color, down ? 0.95 : 0.72));
-        WL.draw.circle(ctx, b.x, b.y, b.r, fill, down ? '#fff' : 'rgba(255,255,255,0.95)');
+        const fill = disabled ? 'rgba(58,58,68,0.12)' : (armed ? 'rgba(136,255,102,0.3)' : hexAlpha(b.color, down ? 0.55 : 0.18));
+        WL.draw.circle(ctx, b.x, b.y, b.r, fill, down ? '#fff' : 'rgba(255,255,255,0.6)');
         if (down) {
           ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 3;
           ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 3, 0, Math.PI * 2); ctx.stroke();
@@ -447,13 +473,13 @@ WL.input = (function () {
           ctx.strokeStyle = '#f4ffe0'; ctx.lineWidth = 3;
           ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 6, 0, Math.PI * 2); ctx.stroke();
         }
-        const badge = badgeFor(b.id);
+        const badge = boxMissing ? 'PICK UP' : badgeFor(b.id);
         if (b.id === 'pause') {
           WL.text.draw(ctx, b.label, b.x, b.y - 5, { size: 7, align: 'center', color: '#fff', stroke: '#000', strokeWidth: 2 });
           WL.text.draw(ctx, badge, b.x + b.r + 4, b.y - 4, { size: 6, color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
         } else {
           WL.text.draw(ctx, b.label, b.x, b.y - 10, { size: 7, align: 'center', color: '#fff', stroke: '#000', strokeWidth: 3 });
-          WL.text.draw(ctx, badge, b.x, b.y + 1, { size: 6, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 3 });
+          WL.text.draw(ctx, badge, b.x, b.y + 1, { size: boxMissing ? 5 : 6, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 3 });
         }
       }
     }

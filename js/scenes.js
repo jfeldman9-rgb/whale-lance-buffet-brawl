@@ -717,7 +717,7 @@
       this.drawHUD(ctx);
       // Control picture stays for the whole stage — intro, fight, clear —
       // on a phone and on a desktop. It is not tied to the tutorial timer.
-      WL.input.drawTouch(ctx, { always: true, fartReady: p.fart >= p.fartMax });
+      WL.input.drawTouch(ctx, { always: true, fartReady: p.fart >= p.fartMax, hasToolbox: p.hasToolbox || p.state === 'grab' });
       if (p.fart >= p.fartMax && (this.phase === 'play' || this.phase === 'intro')) this.drawFartReady(ctx);
       if (this.paused) this.drawPause(ctx);
       D.scanlines(ctx, 0.07);

@@ -53,3 +53,59 @@ for(let i=0;i<4;i++){
 }
 const ctx=canvas.getContext('2d');new WL.scenes.Title(WL.game).draw(ctx);if(process.env.WL_CAPTURE_DIR) fs.writeFileSync(process.env.WL_CAPTURE_DIR+'/wl-title.png',canvas.toBuffer('image/png'));
 const titleWidth=WL.text.width(ctx,'BUFFET BRAWL',34);assert.ok(240-titleWidth/2-4>0);console.log('PASS title fits without clipping');
+
+// Exercise actual BOX actions, not just whether an input event was queued.
+for (const pointerType of ['mouse', 'pen', 'touch']) {
+  const env = boot(844,390,3,pointerType === 'touch');
+  const {WL,canvas,clisteners} = env;
+  const scene = new WL.scenes.Play(WL.game,0,{}); scene.enter();
+  scene.phase='play'; scene.bannerT=0; scene.objects=[]; scene.enemies=[];
+  WL.game.scene=scene;
+  const rect=canvas.getBoundingClientRect();
+  const event=(id,x,y)=>({pointerId:id,pointerType,clientX:x/640*rect.width,clientY:y/360*rect.height});
+  const box=event(3,580,326);
+  if(pointerType==='touch') {
+    clisteners.pointerdown(event(1,60,290));
+    clisteners.pointermove(event(1,90,290));
+    assert.ok(WL.input.axis().x>0,'joystick moves before BOX');
+  }
+  clisteners.pointerdown(box); WL.input.beginFrame();
+  assert.equal(WL.input.pressed.tool,true);
+  assert.equal(!!WL.input.pressed.start,false,'BOX must not pause');
+  scene.player.update(1/60,WL.input);
+  assert.equal(scene.player.state,'throw');
+  clisteners.pointerup(box); WL.input.beginFrame();
+  if(pointerType==='touch') {
+    assert.ok(WL.input.axis().x>0,'releasing BOX leaves joystick active');
+    clisteners.pointerup(event(1,90,290));
+  }
+  for(let i=0;i<24;i++) scene.player.update(1/60,WL.input);
+  assert.equal(scene.projectiles.length,1);
+  assert.equal(scene.projectiles[0].kind,'toolbox');
+  assert.equal(scene.player.hasToolbox,false);
+  const projectile=scene.projectiles[0];
+  for(let i=0;i<120 && !projectile.remove;i++) projectile.update(1/60);
+  const pickup=scene.pickups.find(p=>p.kind==='toolbox');
+  assert.ok(pickup,'thrown toolbox returns as pickup');
+  scene.player.collect(pickup);
+  assert.equal(scene.player.hasToolbox,true);
+  clisteners.pointerdown(box); WL.input.beginFrame(); scene.player.update(1/60,WL.input);
+  assert.equal(scene.player.state,'throw','recovered toolbox can be thrown again');
+  clisteners.pointercancel(box); assert.equal(WL.input.held.tool,false);
+  console.log(`PASS ${pointerType}: BOX throw, recover, rethrow, cancel; no accidental pause`);
+}
+// Between BOX and ATK, the nearest padded target should win, not array order.
+{
+  const {WL,canvas,clisteners}=boot(844,390,3,true);
+  const rect=canvas.getBoundingClientRect();
+  const ev={pointerType:'touch',pointerId:7,clientX:556/640*rect.width,clientY:314/360*rect.height};
+  clisteners.pointerdown(ev); WL.input.beginFrame();
+  assert.equal(WL.input.pressed.tool,true,'nearest BOX target beats ATK padding');
+  assert.equal(!!WL.input.pressed.attack,false);
+  clisteners.pointerup(ev);
+  // Releasing one finger does not release another finger's same action.
+  clisteners.pointerdown({...ev,pointerId:8}); clisteners.pointerdown({...ev,pointerId:9});
+  clisteners.pointerup({...ev,pointerId:8}); assert.equal(WL.input.held.tool,true);
+  clisteners.lostpointercapture({...ev,pointerId:9}); assert.equal(WL.input.held.tool,false);
+  console.log('PASS button-edge hit testing and multi-pointer release');
+}
