@@ -14,20 +14,25 @@
   const hudHead = { key: '', canvas: null };
   function drawHudHead(ctx, mood) {
     const rs = (WL.display && WL.display.renderScale) || 1;
-    const key = mood + '@' + rs;
+    const key = mood + '@' + rs.toFixed(3);
     if (hudHead.key !== key || !hudHead.canvas) {
       const w = 28, h = 32;
       const c = document.createElement('canvas');
-      c.width = Math.ceil(w * rs); c.height = Math.ceil(h * rs);
+      c.width = Math.max(1, Math.round(w * rs));
+      c.height = Math.max(1, Math.round(h * rs));
       const g = c.getContext('2d');
-      g.setTransform(rs, 0, 0, rs, 0, 0);
-      g.imageSmoothingEnabled = false;
+      g.setTransform(c.width / w, 0, 0, c.height / h, 0, 0);
+      g.imageSmoothingEnabled = true;
+      g.imageSmoothingQuality = 'high';
       g.fillStyle = '#3a78c8';
       g.fillRect(0, 0, w, h);
       S.lanceHead(g, 14, 18, 30, { mood });
       hudHead.key = key; hudHead.canvas = c;
     }
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(hudHead.canvas, 7, 6, 28, 32);
+    ctx.imageSmoothingEnabled = smooth;
   }
 
   /* ================================================================== */
@@ -608,8 +613,10 @@
       }
       if (this.flashT > 0) { ctx.save(); ctx.globalAlpha = Math.min(0.8, this.flashT * 2.5); ctx.fillStyle = this.flashColor; ctx.fillRect(0, 0, W, H); ctx.restore(); }
       this.drawHUD(ctx);
+      // Control picture stays for the whole stage — intro, fight, clear —
+      // on a phone and on a desktop. It is not tied to the tutorial timer.
+      WL.input.drawTouch(ctx, { always: true, fartReady: p.fart >= p.fartMax });
       if (p.fart >= p.fartMax && (this.phase === 'play' || this.phase === 'intro')) this.drawFartReady(ctx);
-      if (this.phase === 'intro' || this.phase === 'play') WL.input.drawTouch(ctx, { hintJoy: this.t < 6, fartReady: p.fart >= p.fartMax });
       if (this.paused) this.drawPause(ctx);
       D.scanlines(ctx, 0.07);
     }
@@ -766,7 +773,7 @@
       if (this.tutorialT > 0 && this.tutorial) {
         const lines = T.wrap(ctx, this.tutorial, 7, W - 80);
         const bh = 14 + lines.length * 11;
-        const lift = WL.input.touchEnabled ? 78 : 8;
+        const lift = 158;
         D.fillRRect(ctx, 30, H - lift - bh, W - 60, bh, 4, 'rgba(0,0,30,0.85)', '#39f');
         lines.forEach((l, i) => T.draw(ctx, l, W / 2, H - lift - bh + 7 + i * 11, { size: 7, align: 'center', color: '#fff' }));
       }

@@ -268,7 +268,10 @@ WL.sprites = (function () {
     f.fillStyle = '#fff';
     f.fillRect(0, 0, flashCanvas.width, flashCanvas.height);
     f.globalCompositeOperation = 'source-over';
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(flashCanvas, x - ox, y - oy, FLASH_W, FLASH_H);
+    ctx.imageSmoothingEnabled = smooth;
   }
 
   /**

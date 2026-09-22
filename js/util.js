@@ -9,13 +9,15 @@ WL.FLOOR_TOP = 205;     // highest walkable foot position (far)
 WL.FLOOR_BOTTOM = 345;  // lowest walkable foot position (near)
 WL.FONT = "'Press Start 2P', 'Courier New', monospace";
 
-/* Desktop presentation. main.js fills renderScale / pc from the window.
-   mode: 'auto' (sharp on a mouse+keyboard screen, classic otherwise),
-   'sharp' (supersampled, capped at 3x), 'classic' (1x, stretched). */
+/* Desktop presentation. main.js fills renderScale / pc / dpr from the window.
+   mode: 'auto' (device pixels on every screen, higher cap on a desktop),
+   'sharp' (same path, cap raised), 'classic' (640x360, nearest-neighbor).
+   renderScale is the world-to-backing-store scale, including devicePixelRatio. */
 WL.display = {
   mode: 'auto',
   pc: false,
   renderScale: 1,
+  dpr: 1,
   fullscreen: false,
   resize: null
 };
@@ -168,13 +170,16 @@ WL.draw = {
     }
   },
   scanlines(ctx, alpha) {
-    // One path instead of ~120 fillRect calls. Matters once the backing
-    // store is 2–3x for desktop.
+    // One path instead of a fillRect per stripe. The stripe is one device
+    // pixel so a retina backing store doesn't turn the CRT mask into thick
+    // bars that soften Lance and the HUD.
+    const rs = Math.max(1, (WL.display && WL.display.renderScale) || 1);
     ctx.save();
     ctx.globalAlpha = alpha || 0.12;
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    for (let y = 0; y < WL.H; y += 3) ctx.rect(0, y, WL.W, 1);
+    const thick = 1 / rs;
+    for (let y = 0; y < WL.H; y += 3) ctx.rect(0, y, WL.W, thick);
     ctx.fill();
     ctx.restore();
   },

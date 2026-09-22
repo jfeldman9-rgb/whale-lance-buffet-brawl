@@ -6,7 +6,9 @@ Plain HTML5 Canvas + vanilla JavaScript. No build step, no dependencies. Plays o
 
 The showcase pass tightens the cabinet feel (hit-stop, a directional camera punch, attack buffering, floor tells before dashes and the froyo spoon) and rewrites the mid-fight voice: stage banners, enemy cards, combo ranks, Volcano Fart one-liners, and the ending. The ship temperature stays on the HUD so the cruise reads during the fight.
 
-On a mouse-and-keyboard screen the game draws at 2x or 3x (capped) so Lance and the decks stay sharp, letterboxed in the window. Phones stay on the classic 640×360 picture. Pause → Display switches Auto / Sharp / Classic, and the choice is remembered in this browser.
+The canvas backing store matches the window times `devicePixelRatio` (capped, lower on a phone) so the picture is sharp on a retina desktop and still light on a handset. Pause → Display → Classic keeps the old 640×360 nearest-neighbor look. The choice is remembered in this browser.
+
+During a stage the control picture stays on screen the whole time, on phones and desktops: touch buttons in the corners, a WASD / arrow diagram (or the pad, if one is connected). It does not hide after the tutorial.
 
 ## Play
 
@@ -43,6 +45,8 @@ Two keyboard layouts work at once: a PC cluster around WASD, and the arcade clus
 Pause menu on desktop: sound volume (left/right), fullscreen, and display mode (Auto / Sharp / Classic). Alt-tabbing pauses the fight. A hit rumbles the gamepad when the pad supports it.
 
 The title screen accepts a click on a menu row. Backslash toggles fullscreen from anywhere.
+
+The same bindings are drawn in the corners for the entire stage, so the diagram is still there after the first wave's tips expire.
 
 ### The Volcano Fart
 
