@@ -14,7 +14,39 @@
   const ATTACKS = {
     jab: { pose: 'jab', dur: 0.18, hitAt: 0.045, reach: 44, dmg: 5, kb: 78, lunge: 120, next: 'smash', sfx: 'hit', stop: 'light' },
     smash: { pose: 'smash', windPose: 'smashWind', windUntil: 0.08, dur: 0.26, hitAt: 0.09, reach: 48, dmg: 7, kb: 110, lunge: 90, next: 'sweep', sfx: 'clank', stop: 'light' },
-    sweep: { pose: 'sweep', windPose: 'sweepWind', windUntil: 0.1, dur: 0.36, hitAt: 0.12, reach: 58, back: 36, dmg: 11, kb: 190, lunge: 60, knockdown: true, next: null, sfx: 'hitHeavy', stop: 'heavy' }
+    sweep: { pose: 'sweep', windPose: 'sweepWind', windUntil: 0.1, dur: 0.36, hitAt: 0.12, reach: 58, back: 36, dmg: 11, kb: 190, lunge: 60, knockdown: true, next: null, sfx: 'hitHeavy', stop: 'heavy' },
+    // Wrench Pop: the timed third hit. Pause a beat after the wrench instead of
+    // mashing and Lance uppercuts; the enemy floats for a short juggle.
+    pop: { pose: 'uppercut', windPose: 'popWind', windUntil: 0.07, dur: 0.3, hitAt: 0.1, reach: 48, dmg: 8, kb: 30, lunge: 80, launch: true, next: 'jab', slash: 'pop', sfx: 'pop', stop: 'heavy' }
+  };
+
+  /* Hitbox / invulnerability tuning. Every number the fight uses for
+     fairness lives here so the floor tells can draw the same boxes.
+     Player-side boxes are a little more generous than enemy-side ones on
+     purpose: the arcade convention is "your swing connects if it looked
+     like it did; theirs only if it really did". */
+  const FAIR = {
+    // Lance's hurtbox as seen by enemy melee.
+    hurtHalfW: 13,        // body half width (px)
+    hurtDepth: 18,        // lane (y) tolerance; enemies commit at <16, so a side-step during a tell escapes
+    // Lance's swings.
+    swingDepth: 26,       // lane tolerance for Lance's attacks
+    activeFrames: 0.06,   // seconds a swing stays live after hitAt (was a single frame)
+    // Getting hit.
+    lightStun: 0.28,      // hurt state length (was 0.32)
+    lightIframes: 0.56,   // covers the stun plus ~0.28 s to act (was 0.15 + 0.25 after)
+    getupIframes: 1.0,    // after a knockdown (was 0.9)
+    streakWindow: 1.6,    // three light hits inside this window...
+    streakLimit: 3,       // ...and the third becomes a knockdown: a release, not a lock
+    // Enemies getting hit.
+    enemyStreakLimit: 5,  // 5 light hits without a knockdown and the enemy tumbles
+    enemyGetupIframes: 0.35,
+    juggleHits: 3,        // follow-ups a Wrench Pop allows before the enemy drops
+    juggleDamage: 0.8,
+    popDelay: 0.07,       // wait at least this long after the wrench (mash = sweep, rhythm = pop)
+    // Boss.
+    slamDepth: 34, slamReach: 130, flopRadius: 78,
+    rainRx: 26, rainRy: 13
   };
 
   class Player {
@@ -38,6 +70,14 @@
       this.speed = 135;
       this.dead = false;
       this.won = false;
+      this.hitSet = new Set();
+      this.hitStreak = 0; this.hitStreakT = 0; this.wakeT = 0;
+      this.whiffed = false;
+      this.juggleCount = 0;
+    }
+    /** True while the Wrench Pop timing window is open (for the HUD glint). */
+    get popReady() {
+      return (this.state === 'idle' || this.state === 'walk') && this.nextCombo === 'sweep' && this.comboTimer > 0 && (0.42 - this.comboTimer) >= FAIR.popDelay;
     }
 
     get busy() { return !['idle', 'walk'].includes(this.state); }
@@ -52,9 +92,11 @@
       if (this.specialCd > 0) this.specialCd -= dt;
       if (this.grabCd > 0) this.grabCd -= dt;
       if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.nextCombo = 'jab'; }
-      if (this.comboDisplayT > 0) { this.comboDisplayT -= dt; if (this.comboDisplayT <= 0) this.comboCount = 0; }
+      if (this.comboDisplayT > 0) { this.comboDisplayT -= dt; if (this.comboDisplayT <= 0) { this.comboCount = 0; this.juggleCount = 0; } }
       if (this.comboPop > 0) this.comboPop = Math.max(0, this.comboPop - dt * 3.2);
       if (this.lastToolT > 0) this.lastToolT -= dt;
+      if (this.hitStreakT > 0) { this.hitStreakT -= dt; if (this.hitStreakT <= 0) this.hitStreak = 0; }
+      if (this.wakeT > 0) this.wakeT -= dt;
       const ax = inp.axis();
       const pressed = inp.pressed;
 
@@ -78,7 +120,14 @@
           this.setState(ax.x || ax.y ? 'walk' : 'idle');
           if (this.state === 'walk' && this.stateT === 0) { /* keep t continuous */ }
           if ((pressed.fart || this.bufferFart) && this.fart >= this.fartMax) { this.bufferFart = false; this.startFart(); break; }
-          if (pressed.attack || this.bufferAttack) { this.bufferAttack = false; this.startAttack(this.comboTimer > 0 ? this.nextCombo : 'jab'); break; }
+          if (pressed.attack || this.bufferAttack) {
+            // Buffered (mashed) presses keep the classic sweep; a deliberate
+            // beat after the wrench gets the launcher instead.
+            const timed = !this.bufferAttack && this.popReady;
+            this.bufferAttack = false;
+            this.startAttack(timed ? 'pop' : (this.comboTimer > 0 ? this.nextCombo : 'jab'));
+            break;
+          }
           // SoR-style: walking into an enemy grabs it
           if (ax.x !== 0 && this.grabCd <= 0) {
             const target = this.findGrabTarget(22);
@@ -96,7 +145,15 @@
           if (this.stateT < 0.07) this.vx = this.facing * (a.lunge || 80);
           else this.vx *= Math.pow(0.5, dt * 60);
           if (pressed.attack) this.bufferAttack = true;
-          if (!this.hitDone && this.stateT >= a.hitAt) { this.hitDone = true; this.doAttackHit(a); }
+          // Live for a few frames, not one, so an enemy stepping into the
+          // swing still gets hit. Each enemy is hit once per swing.
+          if (this.stateT >= a.hitAt && this.stateT <= a.hitAt + FAIR.activeFrames) {
+            const first = !this.hitDone;
+            this.hitDone = true;
+            this.doAttackHit(a, first);
+          }
+          // An empty swing is an opening the AI may answer (with a normal tell).
+          this.whiffed = this.hitDone && this.stateT > a.hitAt + FAIR.activeFrames && this.hitSet.size === 0;
           if (a.next && this.bufferAttack && this.hitDone && this.stateT >= a.hitAt + 0.02) {
             this.bufferAttack = false;
             this.startAttack(a.next);
@@ -169,11 +226,11 @@
         }
         case 'hurt': {
           this.vx *= 0.85; this.vy = 0;
-          if (this.stateT >= 0.32) { this.setState('idle'); this.invuln = Math.max(this.invuln, 0.25); }
+          if (this.stateT >= FAIR.lightStun) this.setState('idle');
           break;
         }
         case 'down': {
-          if (this.z <= 0) { this.vx *= 0.8; if (this.stateT > 0.9 && this.z <= 0) { this.setState('idle'); this.invuln = 0.9; } }
+          if (this.z <= 0) { this.vx *= 0.8; if (this.stateT > 0.9 && this.z <= 0) { this.setState('idle'); this.invuln = FAIR.getupIframes; this.wakeT = FAIR.getupIframes; } }
           break;
         }
         case 'dead': {
@@ -212,21 +269,28 @@
     startAttack(name) {
       const a = ATTACKS[name];
       this.attack = a; this.hitDone = false; this.comboTimer = 0; this.bufferAttack = false;
+      this.hitSet.clear(); this.whiffed = false;
       this.setState('attack');
       WL.audio.sfx.swing();
     }
-    doAttackHit(a) {
-      const n = this.hitEnemies({ reach: a.reach, back: a.back || 0, dmg: a.dmg, kb: a.kb, knockdown: a.knockdown, zTol: 40 });
+    doAttackHit(a, first) {
+      const n = this.hitEnemies({ reach: a.reach, back: a.back || 0, dmg: a.dmg, kb: a.kb, knockdown: a.knockdown, launch: a.launch, zTol: 40, exclude: this.hitSet });
       // breakables
-      for (const o of this.g.objects) {
-        if (o.dead) continue;
-        const dx = (o.x - this.x) * this.facing;
-        if (dx > -(a.back || 0) - 10 && dx < a.reach + 10 && Math.abs(o.y - this.y) < 34) { o.hit(this.g, 1); this.g.fx.spark(o.x, o.y - 20); }
+      if (first) {
+        for (const o of this.g.objects) {
+          if (o.dead) continue;
+          const dx = (o.x - this.x) * this.facing;
+          if (dx > -(a.back || 0) - 10 && dx < a.reach + 10 && Math.abs(o.y - this.y) < 34) { o.hit(this.g, 1); this.g.fx.spark(o.x, o.y - 20); }
+        }
       }
       if (n) {
-        if (a.sfx === 'hitHeavy') WL.audio.sfx.hit(true); else if (a.sfx === 'clank') WL.audio.sfx.clank(); else WL.audio.sfx.hit(false);
-        if (this.g.impact) this.g.impact(this.facing, a.stop || 'light');
-        else { this.g.hitstop = a.knockdown ? 0.09 : 0.05; this.g.shake(a.knockdown ? 5 : 2, 0.1); }
+        const firstHit = this.hitSet.size === n;
+        if (firstHit) {
+          if (a.sfx === 'pop') { WL.audio.sfx.pop(); WL.audio.sfx.hit(true); }
+          else if (a.sfx === 'hitHeavy') WL.audio.sfx.hit(true); else if (a.sfx === 'clank') WL.audio.sfx.clank(); else WL.audio.sfx.hit(false);
+          if (this.g.impact) this.g.impact(this.facing, a.stop || 'light');
+          else { this.g.hitstop = a.knockdown ? 0.09 : 0.05; this.g.shake(a.knockdown ? 5 : 2, 0.1); }
+        }
         this.lastTool = a.pose; this.lastToolT = 0.55;
         if (a.knockdown && this.g.bark) this.g.bark('sweep');
       }
@@ -235,11 +299,16 @@
     hitEnemies(box) {
       let n = 0;
       for (const e of this.g.enemies) {
-        if (!e.hittable) continue;
+        if (!e.hittable || (box.exclude && box.exclude.has(e))) continue;
         const dx = (e.x - this.x) * this.facing, dy = Math.abs(e.y - this.y);
-        const hw = e.isBoss ? 40 : 12;
-        if (dx > -(box.back || 0) - hw && dx < box.reach + hw && dy < 26 && Math.abs(e.z - this.z) < (box.zTol || 40)) {
-          e.hurt(box.dmg, this.x, { knockdown: box.knockdown, kb: box.kb });
+        const hw = e.isBoss ? 40 : (e.def.hurtW || 12);
+        // Juggled enemies float above the normal z window; still reachable.
+        const zTol = e.state === 'juggle' ? Math.max(box.zTol || 40, 90) : (box.zTol || 40);
+        if (dx > -(box.back || 0) - hw && dx < box.reach + hw && dy < FAIR.swingDepth && Math.abs(e.z - this.z) < zTol) {
+          if (box.exclude) box.exclude.add(e);
+          const juggled = e.state === 'juggle';
+          e.hurt(box.dmg, this.x, { knockdown: box.knockdown, kb: box.kb, launch: box.launch });
+          if (juggled || e.state === 'juggle') this.juggleCount++;
           const hitX = e.x - this.facing * 6;
           const hitY = e.y - e.height * 0.55 - e.z;
           this.g.fx.spark(hitX, hitY, box.knockdown);
@@ -323,7 +392,7 @@
       this.hp -= dmg; this.flash = 0.12;
       if (WL.input.rumble) WL.input.rumble(knockdown ? 120 : 60, knockdown ? 0.7 : 0.35, 0.25);
       const dir = this.x < fromX ? -1 : 1; // pushed away from attacker
-      this.comboCount = 0;
+      this.comboCount = 0; this.juggleCount = 0;
       if (this.hp <= 0) {
         this.hp = 0; this.setState('dead'); this.vx = dir * 120; this.vz = 200; this.z = 0.01;
         WL.audio.sfx.hurt(); WL.audio.sfx.thud();
@@ -331,14 +400,26 @@
         return true;
       }
       if (this.hp <= 28 && !this.lowBarked) { this.lowBarked = true; if (this.g.bark) this.g.bark('low'); }
+      if (!knockdown) {
+        this.hitStreak = this.hitStreakT > 0 ? this.hitStreak + 1 : 1;
+        this.hitStreakT = FAIR.streakWindow;
+        // Third light hit in a row knocks Lance down, which means get-up
+        // iframes: a way out of a crowd instead of a stun-lock.
+        if (this.hitStreak >= FAIR.streakLimit) { knockdown = true; this.hitStreak = 0; this.hitStreakT = 0; }
+      }
       if (knockdown) { this.setState('down'); this.vx = dir * 160; this.vz = 210; this.z = 0.01; WL.audio.sfx.hurt(); if (this.g.impact) this.g.impact(dir, 'heavy'); else this.g.shake(4, 0.2); }
-      else { this.setState('hurt'); this.vx = dir * 110; this.invuln = 0.15; WL.audio.sfx.hurt(); if (this.g.impact) this.g.impact(dir, 'light'); else this.g.shake(2, 0.1); }
+      else { this.setState('hurt'); this.vx = dir * 110; this.invuln = FAIR.lightIframes; WL.audio.sfx.hurt(); if (this.g.impact) this.g.impact(dir, 'light'); else this.g.shake(2, 0.1); }
       return true;
+    }
+    /** Enemies hold their attacks while Lance is stunned, down, or just back up. */
+    get open() {
+      return this.state === 'hurt' || this.state === 'down' || this.state === 'dead' || this.state === 'gone' || (this.wakeT || 0) > FAIR.getupIframes - 0.55;
     }
 
     respawn(x, y) {
       this.hp = this.maxHp; this.x = x; this.y = y; this.z = 0; this.vx = this.vy = this.vz = 0;
       this.setState('idle'); this.invuln = 2.5; this.grab = null; this.hasToolbox = true; this.lowBarked = false; this.bufferAttack = false;
+      this.hitStreak = 0; this.hitStreakT = 0; this.wakeT = 1.2;
     }
 
     get height() { return 78; }
@@ -374,7 +455,19 @@
       if (this.state === 'attack' && this.attack) {
         const a = this.attack;
         const u = (this.stateT - (a.windUntil || 0)) / Math.max(0.05, a.dur - (a.windUntil || 0));
-        if (u > 0 && u < 1) S.drawSlash(ctx, sx, sy - 48 - this.z, this.facing, a.pose, u);
+        if (u > 0 && u < 1) S.drawSlash(ctx, sx, sy - 48 - this.z, this.facing, a.slash || a.pose, u);
+      }
+      // Wrench Pop window: a rising chevron over the wrench says "now".
+      if (this.popReady) {
+        const k = U.clamp((0.42 - this.comboTimer - FAIR.popDelay) / 0.12, 0, 1);
+        ctx.save();
+        ctx.globalAlpha = 0.5 + 0.5 * k;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+        const cx = sx + this.facing * 22, cy = sy - 92 - this.z - k * 4;
+        ctx.beginPath(); ctx.moveTo(cx - 6, cy + 4); ctx.lineTo(cx, cy - 2); ctx.lineTo(cx + 6, cy + 4); ctx.stroke();
+        ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(cx - 6, cy + 10); ctx.lineTo(cx, cy + 4); ctx.lineTo(cx + 6, cy + 10); ctx.stroke();
+        ctx.restore();
       }
       if (this.state === 'jumpkick') {
         S.drawSlash(ctx, sx + this.facing * 16, sy - 30 - this.z, this.facing, 'jumpkick', 0.5);
@@ -393,14 +486,17 @@
   /* Enemy                                                               */
   /* ------------------------------------------------------------------ */
   const ENEMY_DEFS = {
-    broccoli: { hp: 26, speed: 58, dmg: 7, reach: 36, score: 100, height: 66, windup: 0.42, attackDur: 0.28, ranged: false, plate: '#3f8f28', name: 'BROCCOLI GOON' },
-    sprout: { hp: 12, speed: 95, dmg: 5, reach: 26, score: 50, height: 40, windup: 0.32, attackDur: 0.22, roll: true, plate: '#e2d24a', name: 'BRUSSELS SPROUT' },
-    celery: { hp: 22, speed: 62, dmg: 8, reach: 56, score: 120, height: 84, windup: 0.48, attackDur: 0.3, plate: '#e7f6b0', name: 'CELERY STALKER' },
-    carrot: { hp: 24, speed: 125, dmg: 8, reach: 34, score: 150, height: 62, windup: 0.32, attackDur: 0.24, dash: true, ranged: 'shuriken', plate: '#f08a1e', name: 'CARROT NINJA' },
-    spinach: { hp: 48, speed: 46, dmg: 12, reach: 40, score: 200, height: 70, windup: 0.62, attackDur: 0.32, knockdown: true, armor: true, plate: '#2a4ad0', name: 'SPINACH THUG' },
-    kale: { hp: 75, speed: 52, dmg: 14, reach: 44, score: 300, height: 84, windup: 0.58, attackDur: 0.32, knockdown: true, armor: true, charge: true, plate: '#143528', name: 'KALE BRUISER' },
-    froyo: { hp: 32, speed: 72, dmg: 6, reach: 32, score: 400, height: 60, windup: 0.38, attackDur: 0.28, ranged: 'sprinkle', keepAway: true, plate: '#f7a7c7', name: 'FROZEN YOGURT' }
+    // hurtW: half width Lance's swings test against, matched to each sprite's body.
+    // agile: may side-step out of a swing it sees coming (never mid-combo).
+    broccoli: { hp: 26, speed: 58, dmg: 7, reach: 36, score: 100, height: 66, windup: 0.42, attackDur: 0.28, ranged: false, hurtW: 14, plate: '#3f8f28', name: 'BROCCOLI GOON' },
+    sprout: { hp: 12, speed: 95, dmg: 5, reach: 26, score: 50, height: 40, windup: 0.32, attackDur: 0.22, roll: true, hurtW: 11, agile: true, plate: '#e2d24a', name: 'BRUSSELS SPROUT' },
+    celery: { hp: 22, speed: 62, dmg: 8, reach: 56, score: 120, height: 84, windup: 0.48, attackDur: 0.3, hurtW: 11, agile: true, plate: '#e7f6b0', name: 'CELERY STALKER' },
+    carrot: { hp: 24, speed: 125, dmg: 8, reach: 34, score: 150, height: 62, windup: 0.32, attackDur: 0.24, dash: true, ranged: 'shuriken', hurtW: 12, agile: true, plate: '#f08a1e', name: 'CARROT NINJA' },
+    spinach: { hp: 48, speed: 46, dmg: 12, reach: 40, score: 200, height: 70, windup: 0.62, attackDur: 0.32, knockdown: true, armor: true, hurtW: 15, plate: '#2a4ad0', name: 'SPINACH THUG' },
+    kale: { hp: 75, speed: 52, dmg: 14, reach: 44, score: 300, height: 84, windup: 0.58, attackDur: 0.32, knockdown: true, armor: true, charge: true, hurtW: 17, plate: '#143528', name: 'KALE BRUISER' },
+    froyo: { hp: 32, speed: 72, dmg: 6, reach: 32, score: 400, height: 60, windup: 0.38, attackDur: 0.28, ranged: 'sprinkle', keepAway: true, hurtW: 13, plate: '#f7a7c7', name: 'FROZEN YOGURT' }
   };
+  const ATTACKING = ['windup', 'prime', 'attack', 'dash', 'charge', 'roll'];
 
   class Enemy {
     constructor(g, type, x, y, opts = {}) {
@@ -426,9 +522,18 @@
       this.dropChance = opts.dropChance !== undefined ? opts.dropChance : 0.22;
       this.elite = !!opts.elite;
       if (this.elite) { this.maxHp = Math.round(this.maxHp * 1.5); this.hp = this.maxHp; }
+      this.flankSide = 0; this.flankT = 0;
+      this.streak = 0; this.streakT = 0;
+      this.juggleLeft = 0;
+      this.evadeCd = U.rand(1.5, 3);
     }
 
-    get hittable() { return !this.dead && !['down', 'dead', 'thrown', 'spawn'].includes(this.state) && this.z < 80; }
+    // 'getup' is a short wake-up window: no free hits on a rising enemy.
+    get hittable() { return !this.dead && !['down', 'dead', 'thrown', 'spawn', 'getup'].includes(this.state) && this.z < 80; }
+    /** The exact melee box an attack tests (floor tells draw this). */
+    meleeBox() {
+      return { back: FAIR.hurtHalfW * 0.5, front: this.def.reach + FAIR.hurtHalfW, depth: FAIR.hurtDepth };
+    }
     get grabbable() { return !this.dead && !this.isBoss && ['approach', 'wait', 'stunned', 'hurt', 'windup', 'prime', 'idle'].includes(this.state) && this.z <= 0; }
     setState(s) { this.state = s; this.stateT = 0; }
 
@@ -437,15 +542,19 @@
       if (this.flash > 0) this.flash -= dt;
       if (this.attackCd > 0) this.attackCd -= dt;
       if (this.rangedCd > 0) this.rangedCd -= dt;
+      if (this.streakT > 0) { this.streakT -= dt; if (this.streakT <= 0) this.streak = 0; }
+      if (this.flankT > 0) this.flankT -= dt;
+      if (this.evadeCd > 0) this.evadeCd -= dt;
       const p = this.g.player;
 
-      // vertical physics
+      // vertical physics (juggles float a little: lower gravity while popped)
       if (this.z > 0 || this.vz !== 0) {
-        this.vz -= GRAV * dt; this.z += this.vz * dt;
+        this.vz -= GRAV * (this.state === 'juggle' ? 0.72 : 1) * dt; this.z += this.vz * dt;
         if (this.z <= 0) {
           this.z = 0; this.vz = 0;
           if (this.state === 'thrown') { this.landThrown(); }
           else if (this.state === 'down') { this.vx = 0; this.g.fx.dust(this.x, this.y, 8); WL.audio.sfx.thud(); }
+          else if (this.state === 'juggle') { this.juggleLeft = 0; this.setState('down'); this.stateT = 0.4; this.vx = 0; this.g.fx.dust(this.x, this.y, 10); WL.audio.sfx.thud(); }
         }
       }
 
@@ -471,7 +580,8 @@
           if (!this.hitDone && this.stateT >= 0.08) {
             this.hitDone = true;
             const dx = (p.x - this.x) * this.facing, dy = Math.abs(p.y - this.y);
-            if (dx > -6 && dx < this.def.reach + 14 && dy < 26 && p.z < 40) {
+            const box = this.meleeBox();
+            if (dx > -box.back && dx < box.front && dy < box.depth && p.z < 40) {
               if (p.hurt(this.def.dmg, this.x, !!this.def.knockdown)) this.g.fx.spark(p.x, p.y - 50, !!this.def.knockdown);
             }
           }
@@ -483,7 +593,7 @@
           this.vx = this.facing * this.speed * 2.6; this.vy = 0;
           if (!this.hitDone) {
             const dx = (p.x - this.x) * this.facing, dy = Math.abs(p.y - this.y);
-            if (dx > -10 && dx < 30 && dy < 22 && p.z < 30) { this.hitDone = true; if (p.hurt(this.def.dmg, this.x, this.state === 'roll')) this.g.fx.spark(p.x, p.y - 40); }
+            if (dx > -10 && dx < 30 && dy < FAIR.hurtDepth && p.z < 30) { this.hitDone = true; if (p.hurt(this.def.dmg, this.x, this.state === 'roll')) this.g.fx.spark(p.x, p.y - 40); }
           }
           if (this.stateT >= 0.42) { this.setState('recover'); this.attackCd = U.rand(1.2, 2.2); }
           break;
@@ -492,7 +602,7 @@
           this.vx = this.facing * this.speed * 2.2; this.vy = 0;
           if (!this.hitDone) {
             const dx = (p.x - this.x) * this.facing, dy = Math.abs(p.y - this.y);
-            if (dx > -10 && dx < 36 && dy < 26 && p.z < 30) { this.hitDone = true; if (p.hurt(this.def.dmg, this.x, true)) { this.g.fx.spark(p.x, p.y - 50, true); this.g.shake(4, 0.15); } }
+            if (dx > -10 && dx < 36 && dy < FAIR.hurtDepth + 2 && p.z < 30) { this.hitDone = true; if (p.hurt(this.def.dmg, this.x, true)) { this.g.fx.spark(p.x, p.y - 50, true); this.g.shake(4, 0.15); } }
           }
           if (this.stateT >= 0.7) { this.setState('recover'); this.attackCd = U.rand(1.5, 2.5); }
           break;
@@ -511,7 +621,13 @@
         case 'down':
           if (this.z <= 0) { this.vx *= 0.8; if (this.stateT >= 1.1) { this.setState('getup'); } }
           break;
-        case 'getup': this.vx = 0; if (this.stateT >= 0.35) { this.setState('approach'); this.attackCd = U.rand(0.3, 0.9); } break;
+        case 'getup': this.vx = 0; if (this.stateT >= FAIR.enemyGetupIframes) { this.setState('approach'); this.attackCd = U.rand(0.3, 0.9); } break;
+        case 'juggle': this.vx *= 0.985; this.vy = 0; break;
+        case 'evade':
+          // Short hop back and off-lane, out of a swing it saw coming.
+          this.vx = -this.facing * this.speed * 1.6; this.vy = this.evadeVy || 0;
+          if (this.stateT >= 0.26) { this.setState('approach'); this.attackCd = Math.max(this.attackCd, 0.25); }
+          break;
         case 'stunned':
           this.vx = 0; this.vy = 0; this.stun -= dt;
           if (this.stun <= 0) this.setState('approach');
@@ -547,13 +663,26 @@
       this.sideTimer -= dt;
       if (this.sideTimer <= 0) { this.sideTimer = U.rand(2, 5); if (U.chance(0.4)) this.side *= -1; this.laneOff = U.rand(-14, 14); }
       const pDown = ['down', 'dead', 'gone'].includes(p.state);
+      // Lance is reeling or just got up: circle, don't pile on.
+      const pOpen = p.open != null ? p.open : pDown;
+      const canStart = () => (this.g.canStartAttack ? this.g.canStartAttack(this) : this.g.attackers() < 2);
 
+      // Side-step a swing that is clearly coming (agile greens only, never mid-combo).
+      if (this.def.agile && this.evadeCd <= 0 && p.state === 'attack' && p.attack && !p.hitDone &&
+        (this.x - p.x) * p.facing > 0 && adx < p.attack.reach + 26 && Math.abs(p.y - this.y) < 22) {
+        this.evadeCd = U.rand(2.6, 4.2);
+        if (U.chance(0.3)) {
+          this.evadeVy = (this.y < p.y ? -1 : 1) * this.speed * 0.9;
+          this.setState('evade');
+          return;
+        }
+      }
       // Ranged behavior
-      if (this.def.ranged && this.rangedCd <= 0 && adx > 120 && adx < 300 && Math.abs(dy) < 30 && !pDown) {
+      if (this.def.ranged && this.rangedCd <= 0 && adx > 120 && adx < 300 && Math.abs(dy) < 30 && !pDown && !pOpen) {
         this.setState('spit'); this.hitDone = false; return;
       }
       // Dash / roll / charge openers
-      if (!pDown && this.attackCd <= 0 && Math.abs(dy) < 16 && adx > 70 && adx < 200 && this.g.attackers() < 2) {
+      if (!pDown && !pOpen && this.attackCd <= 0 && Math.abs(dy) < 16 && adx > 70 && adx < 200 && canStart()) {
         let pending = null;
         if (this.def.dash && U.chance(0.7)) pending = 'dash';
         else if (this.def.roll && U.chance(0.6)) pending = 'roll';
@@ -562,6 +691,7 @@
           this.pending = pending;
           this.primeDur = pending === 'roll' ? 0.22 : pending === 'charge' ? 0.38 : 0.28;
           this.setState('prime');
+          if (this.g.noteAttackStart) this.g.noteAttackStart(this);
           if (pending === 'charge') WL.audio.sfx.bossRoar(); else WL.audio.sfx.blip();
           return;
         }
@@ -570,11 +700,20 @@
       // desired standoff position
       let standoff = this.def.reach - 8;
       if (this.def.keepAway && this.rangedCd > 0.6) standoff = 150; // froyo hangs back while reloading
-      const targetX = p.x - this.side * 0; // we approach from whichever side we're on
-      // If we're on the wrong side and far, walk around
+      if (pOpen) standoff = Math.max(standoff, this.def.reach + 26); // give him room to get up
       const onSide = Math.sign(this.x - p.x) || 1;
-      const wantX = p.x + onSide * standoff;
-      const ex = wantX - this.x, ey = dy;
+      // The director may assign a flank; otherwise stay on the side we're on.
+      const side = this.flankT > 0 && this.flankSide ? this.flankSide : onSide;
+      const wantX = p.x + side * standoff;
+      let wantY = p.y + this.laneOff;
+      if (side !== onSide && adx < standoff + 60) {
+        // Crossing to the far flank: arc around Lance, not through him.
+        const up = this.y < p.y;
+        let arcY = p.y + (up ? -48 : 48);
+        if (arcY < WL.FLOOR_TOP + 4 || arcY > WL.FLOOR_BOTTOM - 4) arcY = p.y + (up ? 48 : -48);
+        wantY = arcY;
+      }
+      const ex = wantX - this.x, ey = wantY - this.y;
       const dist = Math.hypot(ex, ey);
 
       if (this.state === 'wait') {
@@ -584,10 +723,16 @@
       }
 
       const inRange = adx <= this.def.reach && Math.abs(dy - this.laneOff) < 16 && Math.abs(p.y - this.y) < 16;
-      if (inRange && !pDown) {
+      if (inRange && !pDown && side === onSide) {
         this.vx = 0; this.vy = 0;
-        if (this.attackCd <= 0 && this.g.attackers() < 2 && p.z < 40) { this.setState('windup'); return; }
-        if (this.attackCd <= 0 && this.g.attackers() >= 2) this.attackCd = U.rand(0.2, 0.5);
+        // A whiffed swing is an opening: answer it sooner (still with a full tell).
+        if (p.whiffed && p.state === 'attack' && this.attackCd > 0 && this.attackCd < 0.6) this.attackCd = 0;
+        if (this.attackCd <= 0 && !pOpen && canStart() && p.z < 40) {
+          this.setState('windup');
+          if (this.g.noteAttackStart) this.g.noteAttackStart(this);
+          return;
+        }
+        if (this.attackCd <= 0) this.attackCd = U.rand(0.2, 0.5);
         return;
       }
       if (this.state === 'approach') {
@@ -610,14 +755,42 @@
     hurt(dmg, fromX, opts = {}) {
       if (this.dead) return;
       if (this.state === 'thrown') return;
+      const juggling = this.state === 'juggle';
+      if (juggling) dmg = Math.max(1, Math.round(dmg * FAIR.juggleDamage));
       this.hp -= dmg; this.flash = 0.1;
       this.g.player.addScore(Math.round(dmg * (this.type === 'froyo' ? 4 : 2)));
       const dir = this.x < fromX ? -1 : 1;
       if (this.hp <= 0) { this.die(dir); return; }
       if (opts.stun) { this.stun = opts.stun; this.setState('stunned'); this.vx = dir * 20; WL.audio.sfx.blip(); this.g.fx.text(this.x, this.y - this.height - 10, 'FROZEN!', '#8ff'); return; }
       if (opts.noInterrupt || this.state === 'grabbed') return;
-      const armored = this.def.armor && ['windup', 'attack', 'charge'].includes(this.state) && !opts.knockdown;
+      if (juggling) {
+        // Each follow-up re-pops a little; out of budget (or a heavy) sends it down.
+        if (this.juggleLeft > 0 && !opts.knockdown) {
+          this.juggleLeft--;
+          this.vz = Math.max(this.vz, 190); this.vx = dir * 36;
+          WL.audio.sfx.juggle();
+          return;
+        }
+        this.juggleLeft = 0;
+        this.setState('down'); this.vx = dir * (opts.kb || 140); this.vz = Math.max(120, this.vz); this.z = Math.max(this.z, 0.01);
+        if (opts.knockdown) this.g.fx.text(this.x, this.y - this.height - this.z - 8, 'AIR MAIL', '#ffe14a', 0.8);
+        return;
+      }
+      const armored = this.def.armor && ['windup', 'attack', 'charge'].includes(this.state) && !opts.knockdown && !opts.launch;
       if (armored) { this.g.fx.text(this.x, this.y - this.height - 6, 'TOO LEAFY', '#c8e89a', 0.6); return; }
+      if (opts.launch && !this.isBoss) {
+        this.streak = 0; this.streakT = 0;
+        this.juggleLeft = FAIR.juggleHits;
+        this.setState('juggle'); this.vx = dir * (opts.kb || 30); this.vz = 330; this.z = Math.max(this.z, 0.01);
+        this.g.fx.text(this.x, this.y - this.height - 12, 'POP!', '#bff', 0.7);
+        return;
+      }
+      if (!opts.knockdown) {
+        // Light-hit lock limit: the fifth un-knocked hit tumbles the enemy.
+        this.streak = this.streakT > 0 ? this.streak + 1 : 1;
+        this.streakT = 1.4;
+        if (this.streak >= FAIR.enemyStreakLimit) { opts = Object.assign({}, opts, { knockdown: true, kb: 90 }); this.streak = 0; this.streakT = 0; }
+      } else { this.streak = 0; this.streakT = 0; }
       if (opts.knockdown) { this.setState('down'); this.vx = dir * (opts.kb || 120); this.vz = 200; this.z = 0.01; }
       else { this.setState('hurt'); this.vx = dir * (opts.kb || 50); }
     }
@@ -662,7 +835,8 @@
         case 'roll': return 'roll';
         case 'spit': return 'spit';
         case 'hurt': return 'hurt';
-        case 'down': return this.z > 0 ? 'knockdown' : 'down';
+        case 'down': case 'juggle': return this.z > 0 ? 'knockdown' : 'down';
+        case 'evade': return 'walk';
         case 'dead': return 'dead';
         case 'stunned': return 'stunned';
         case 'grabbed': return 'grabbed';
@@ -687,6 +861,9 @@
   /* ------------------------------------------------------------------ */
   /* Boss: Giant Frozen Yogurt Cone                                      */
   /* ------------------------------------------------------------------ */
+  // Wind-up length per phase [1, 2, 3]. Jump was 0.42 s, too short to read a locked mark.
+  const BOSS_TELLS = { slamWind: [0.8, 0.75, 0.62], jumpWind: [0.6, 0.6, 0.52], rainWind: [0.8, 0.8, 0.7] };
+  const BOSS_LAST_CALL = 0.2;
   class Boss extends Enemy {
     constructor(g, x, y) {
       super(g, 'froyo', x, y);
@@ -697,6 +874,7 @@
       this.melt = 0; this.dropChance = 0;
       this.intro = 2.2; this.state = 'intro';
       this.attackCd = 1.2;
+      this.tellDur = 0.75; this.lastCalled = false;
     }
     get grabbable() { return false; }
     get hittable() { return !this.dead && this.state !== 'intro' && this.z < 120; }
@@ -742,22 +920,25 @@
           if (this.phase >= 3) { this.puddleT += dt; if (this.puddleT > 2.4) { this.puddleT = 0; this.g.puddles.push({ x: this.x, y: this.y + 4, r: 34, t: 0, life: 9, arm: 0.55 }); } }
           if (this.attackCd <= 0) {
             const pDown = ['down', 'dead', 'gone'].includes(p.state);
-            if (pDown) { this.attackCd = 0.6; break; }
-            if (adx < 110 && Math.abs(dy) < 30) { this.setState('slamWind'); this.hitDone = false; WL.audio.sfx.blip(); break; }
+            if (pDown || p.open) { this.attackCd = 0.5; break; }
+            if (adx < 110 && Math.abs(dy) < 30) { this.startTell('slamWind'); WL.audio.sfx.tellSlam(); break; }
             const roll = Math.random();
-            if (this.phase >= 2 && roll < 0.4) { this.setState('rainWind'); this.hitDone = false; WL.audio.sfx.bossRoar(); break; }
+            if (this.phase >= 2 && !this.summoned && roll >= 0.75) { this.summoned = true; this.summonNext = true; this.startTell('rainWind'); WL.audio.sfx.tellSummon(); break; }
+            if (this.phase >= 2 && roll < 0.4) { this.startTell('rainWind'); WL.audio.sfx.tellRain(); break; }
             if (this.phase >= 2 && roll < 0.75 && adx > 90) {
-              this.jumpTargetX = p.x; this.jumpTargetY = U.clamp(p.y, WL.FLOOR_TOP, WL.FLOOR_BOTTOM);
-              this.setState('jumpWind');
-              WL.audio.sfx.blip();
+              // The mark is locked here and he lands exactly on it.
+              const cam = this.g.camX;
+              this.jumpTargetX = U.clamp(p.x, cam + 40, cam + WL.W - 40);
+              this.jumpTargetY = U.clamp(p.y, WL.FLOOR_TOP, WL.FLOOR_BOTTOM);
+              this.startTell('jumpWind');
+              WL.audio.sfx.tellJump();
               break;
             }
-            if (this.phase >= 2 && !this.summoned && roll >= 0.75) { this.summoned = true; this.setState('rainWind'); this.hitDone = false; this.summonNext = true; WL.audio.sfx.bossRoar(); break; }
             this.attackCd = 0.4;
           }
           break;
         }
-        case 'slamWind': this.vx = 0; this.vy = 0; if (this.stateT >= 0.75) { this.setState('slam'); this.hitDone = false; } break;
+        case 'slamWind': this.vx = 0; this.vy = 0; this.tellTick(); if (this.stateT >= this.tellDur) { this.setState('slam'); this.hitDone = false; } break;
         case 'slam': {
           this.vx = 0; this.vy = 0;
           if (!this.hitDone && this.stateT >= 0.1) {
@@ -765,7 +946,7 @@
             if (this.g.impact) this.g.impact(this.facing, 'boss'); else this.g.shake(7, 0.3);
             this.g.fx.dust(this.x + this.facing * 70, this.y, 22);
             const ddx = (p.x - this.x) * this.facing;
-            if (ddx > -10 && ddx < 130 && Math.abs(p.y - this.y) < 40 && p.z < 50) { if (p.hurt(this.def.dmg, this.x, true)) this.g.fx.spark(p.x, p.y - 50, true); }
+            if (ddx > -10 && ddx < FAIR.slamReach && Math.abs(p.y - this.y) < FAIR.slamDepth && p.z < 50) { if (p.hurt(this.def.dmg, this.x, true)) this.g.fx.spark(p.x, p.y - 50, true); }
             if (this.phase >= 3) this.g.puddles.push({ x: this.x + this.facing * 70, y: this.y + 4, r: 30, t: 0, life: 8, arm: 0.2 });
           }
           if (this.stateT >= 0.5) { this.setState('recover'); this.attackCd = this.phase === 3 ? 0.7 : 1.3; }
@@ -774,19 +955,25 @@
         case 'jumpWind':
           this.vx = 0; this.vy = 0;
           this.facing = (this.jumpTargetX || p.x) >= this.x ? 1 : -1;
-          if (this.stateT >= 0.42) { this.setState('jump'); this.vz = 460; this.z = 0.01; WL.audio.sfx.jump(); }
+          this.tellTick();
+          if (this.stateT >= this.tellDur) {
+            this.setState('jump'); this.vz = 460; this.z = 0.01; WL.audio.sfx.jump();
+            // Constant velocity over the whole flight: touchdown is the ring.
+            const flight = 2 * 460 / GRAV;
+            this.vx = (this.jumpTargetX - this.x) / flight;
+            this.vy = (this.jumpTargetY - this.y) / flight;
+          }
           break;
         case 'jump': {
           // The mark was locked in jumpWind. He commits to it.
-          const tx = this.jumpTargetX, ty = this.jumpTargetY;
-          this.vx = U.clamp((tx - this.x) * 2.4, -280, 280); this.vy = U.clamp((ty - this.y) * 2.1, -140, 140);
-          this.facing = tx >= this.x ? 1 : -1;
+          this.facing = this.jumpTargetX >= this.x ? 1 : -1;
           break;
         }
         case 'land': this.vx = 0; this.vy = 0; if (this.stateT >= 0.7) { this.setState('recover'); this.attackCd = 1.0; } break;
         case 'rainWind': {
           this.vx = 0; this.vy = 0;
-          if (!this.hitDone && this.stateT >= 0.7) {
+          this.tellTick();
+          if (!this.hitDone && this.stateT >= this.tellDur) {
             this.hitDone = true;
             if (this.summonNext) {
               this.summonNext = false;
@@ -804,7 +991,7 @@
               this.g.fx.text(this.x, this.y - 170, 'TOPPINGS. FROM ABOVE.', '#fc6', 1.6);
             }
           }
-          if (this.stateT >= 1.3) { this.setState('recover'); this.attackCd = 1.4; }
+          if (this.stateT >= this.tellDur + 0.6) { this.setState('recover'); this.attackCd = 1.4; }
           break;
         }
         case 'recover': this.vx = 0; this.vy = 0; if (this.stateT >= 0.6) this.setState('approach'); break;
@@ -815,12 +1002,30 @@
       this.y = U.clamp(this.y, WL.FLOOR_TOP, WL.FLOOR_BOTTOM);
       this.x = U.clamp(this.x, this.g.camX + 40, this.g.camX + WL.W - 40);
     }
+    /* Tells run on a fixed clock per move and phase. Phase 3 is faster, but
+       never below the floor a first-time player can react to, and the last
+       0.2 s is always marked the same way (white outline + click). */
+    startTell(state) {
+      const T = BOSS_TELLS[state];
+      this.tellDur = T[Math.min(this.phase, 3) - 1];
+      this.lastCalled = false;
+      this.hitDone = false;
+      this.setState(state);
+    }
+    tellTick() {
+      if (!this.lastCalled && this.stateT >= this.tellDur - BOSS_LAST_CALL) { this.lastCalled = true; WL.audio.sfx.lastCall(); }
+    }
+    /** 0..1 progress through the current tell, and whether we are in the last call. */
+    tellProgress() {
+      const dur = this.tellDur || 0.75;
+      return { k: U.clamp(this.stateT / dur, 0, 1), last: this.stateT >= dur - BOSS_LAST_CALL, dur };
+    }
     landHit() {
       WL.audio.sfx.slam();
       if (this.g.impact) this.g.impact(this.facing, 'boss'); else this.g.shake(9, 0.35);
       this.g.fx.dust(this.x, this.y, 30);
       const p = this.g.player;
-      if (Math.hypot(p.x - this.x, (p.y - this.y) * 1.6) < 78 && p.z < 60) { if (p.hurt(12, this.x, true)) this.g.fx.spark(p.x, p.y - 50, true); }
+      if (Math.hypot(p.x - this.x, (p.y - this.y) * 1.6) < FAIR.flopRadius && p.z < 60) { if (p.hurt(12, this.x, true)) this.g.fx.spark(p.x, p.y - 50, true); }
       for (const e of this.g.enemies) if (e !== this && e.hittable && Math.hypot(e.x - this.x, (e.y - this.y) * 1.6) < 95) e.hurt(10, this.x, { knockdown: true });
       if (this.phase >= 3) this.g.puddles.push({ x: this.x, y: this.y + 4, r: 44, t: 0, life: 9, arm: 0.35 });
     }
@@ -984,7 +1189,9 @@
       this.remove = true;
       const p = this.g.player;
       this.g.fx.dust(this.x, this.y, 10); WL.audio.sfx.splat(); this.g.shake(1.5, 0.05);
-      if (Math.abs(p.x - this.x) < 26 && Math.abs(p.y - this.y) < 20 && p.z < 30) { if (p.hurt(this.dmg, this.x, true)) this.g.fx.spark(p.x, p.y - 45, true); }
+      // Same ellipse the landing ring draws.
+      const ex = (p.x - this.x) / FAIR.rainRx, ey = (p.y - this.y) / FAIR.rainRy;
+      if (ex * ex + ey * ey < 1 && p.z < 30) { if (p.hurt(this.dmg, this.x, true)) this.g.fx.spark(p.x, p.y - 45, true); }
       for (const e of this.g.enemies) if (!e.isBoss && e.hittable && Math.abs(e.x - this.x) < 26 && Math.abs(e.y - this.y) < 20) e.hurt(8, this.x, { knockdown: true });
     }
     draw(ctx, camX) {
@@ -994,11 +1201,20 @@
         const k = U.clamp(1 - this.z / 420, 0.25, 1);
         ctx.save();
         ctx.globalAlpha = 0.9;
-        ctx.strokeStyle = this.z > 70 ? '#ff3355' : '#ffd0e0';
+        ctx.strokeStyle = this.z > 70 ? '#ff3355' : '#ffffff';
         ctx.lineWidth = this.z > 70 ? 2 : 3;
+        // Outer ring is the true hit ellipse; the inner one closes in as it falls.
+        ctx.setLineDash(this.z > 70 ? [4, 3] : []);
         ctx.beginPath();
-        ctx.ellipse(sx, sy, 10 + 18 * k, 4 + 6 * k, 0, 0, Math.PI * 2);
+        ctx.ellipse(sx, sy, FAIR.rainRx, FAIR.rainRy, 0, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.35 + 0.4 * k;
+        ctx.fillStyle = this.z > 70 ? 'rgba(255,51,85,0.35)' : 'rgba(255,255,255,0.4)';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, FAIR.rainRx * k, FAIR.rainRy * k, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.9;
         if (Math.floor((this.t || 0) * 10) % 2 === 0 && this.z > 70) {
           ctx.strokeStyle = '#fff';
           ctx.beginPath();
@@ -1013,5 +1229,5 @@
     }
   }
 
-  WL.entities = { Player, Enemy, Boss, Pickup, Breakable, Projectile, ENEMY_DEFS, ATTACKS };
+  WL.entities = { Player, Enemy, Boss, Pickup, Breakable, Projectile, ENEMY_DEFS, ATTACKS, FAIR, ATTACKING, BOSS_TELLS };
 })();

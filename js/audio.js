@@ -3,20 +3,74 @@
 'use strict';
 
 WL.audio = (function () {
-  let ctx = null, master = null, musicGain = null, sfxGain = null;
+  let ctx = null, master = null, musicGain = null, duckGain = null, sfxGain = null, comp = null;
   let muted = false;
   let unlocked = false;
   let volume = 1; // 0..1, multiplied into the master gain
+  let musicLevel = 1; // 0..1, the music bus only
+  const MUSIC_BASE = 0.32;
+  let duckUntil = 0, duckDepth = 1;
 
   function init() {
     if (ctx) return;
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       master = ctx.createGain(); master.gain.value = muted ? 0 : 0.8 * volume; master.connect(ctx.destination);
-      musicGain = ctx.createGain(); musicGain.gain.value = 0.32; musicGain.connect(master);
-      sfxGain = ctx.createGain(); sfxGain.gain.value = 0.9; sfxGain.connect(master);
+      // Music: level -> duck -> master. The duck stage dips under big hits and barks.
+      duckGain = ctx.createGain(); duckGain.gain.value = 1; duckGain.connect(master);
+      musicGain = ctx.createGain(); musicGain.gain.value = MUSIC_BASE * musicLevel; musicGain.connect(duckGain);
+      // SFX get a fast compressor so stacked hits punch instead of clipping.
+      sfxGain = ctx.createGain(); sfxGain.gain.value = 1.05;
+      if (ctx.createDynamicsCompressor) {
+        comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -16; comp.knee.value = 8; comp.ratio.value = 4.5;
+        comp.attack.value = 0.002; comp.release.value = 0.14;
+        sfxGain.connect(comp); comp.connect(master);
+      } else sfxGain.connect(master);
     } catch (e) { ctx = null; }
   }
+
+  /** Dip the music bus: depth is the gain to fall to (0..1). */
+  function duck(depth, hold, release) {
+    if (!ctx || !duckGain) return;
+    const now = ctx.currentTime;
+    depth = Math.max(0.05, Math.min(1, depth == null ? 0.5 : depth));
+    hold = hold == null ? 0.18 : hold;
+    release = release == null ? 0.45 : release;
+    // A shallower duck never cuts a deeper one short.
+    if (now < duckUntil && depth > duckDepth) return;
+    const g = duckGain.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(depth, now + 0.025);
+    g.setValueAtTime(depth, now + 0.025 + hold);
+    g.linearRampToValueAtTime(1, now + 0.025 + hold + release);
+    duckUntil = now + 0.025 + hold; duckDepth = depth;
+  }
+  function setMusicLevel(v) {
+    musicLevel = v < 0 ? 0 : v > 1 ? 1 : v;
+    if (musicGain) musicGain.gain.value = MUSIC_BASE * musicLevel;
+    return musicLevel;
+  }
+  const MUSIC_STEPS = [1, 0.7, 0.4, 0];
+  function cycleMusic(dir) {
+    let i = 0, best = 99;
+    MUSIC_STEPS.forEach((s, n) => { const d = Math.abs(s - musicLevel); if (d < best) { best = d; i = n; } });
+    i = (i + (dir || 1) + MUSIC_STEPS.length) % MUSIC_STEPS.length;
+    return setMusicLevel(MUSIC_STEPS[i]);
+  }
+  function musicLabel() { return musicLevel <= 0 ? 'OFF' : Math.round(musicLevel * 100) + '%'; }
+
+  // The same cue fired twice inside one frame just stacks volume; drop it.
+  const lastFired = {};
+  function gate(name, ms) {
+    if (!ctx) return false;
+    const now = ctx.currentTime * 1000;
+    if (lastFired[name] != null && now - lastFired[name] < (ms || 28)) return false;
+    lastFired[name] = now;
+    return true;
+  }
+  const vary = (f, amt) => f * (1 + (Math.random() * 2 - 1) * (amt || 0.05));
 
   function unlock() {
     init();
@@ -101,14 +155,29 @@ WL.audio = (function () {
   const sfx = {
     blip() { tone({ f0: 880, f1: 1200, dur: 0.06, vol: 0.2 }); },
     select() { tone({ f0: 660, f1: 990, dur: 0.08, vol: 0.25 }); tone({ f0: 990, f1: 1320, dur: 0.1, delay: 0.07, vol: 0.25 }); },
-    swing() { noise({ f0: 1800, f1: 400, dur: 0.09, vol: 0.12, filter: 'bandpass', q: 0.8 }); },
+    swing() { if (!gate('swing', 40)) return; noise({ f0: vary(1900), f1: 380, dur: 0.08, vol: 0.13, filter: 'bandpass', q: 0.9 }); },
     hit(heavy) {
-      noise({ f0: heavy ? 500 : 900, f1: 120, dur: heavy ? 0.16 : 0.1, vol: heavy ? 0.5 : 0.35 });
-      tone({ f0: heavy ? 160 : 220, f1: 60, dur: heavy ? 0.14 : 0.08, vol: 0.35, type: 'triangle' });
+      if (!gate(heavy ? 'hitH' : 'hitL', 30)) return;
+      // Transient click, body crunch, then a sub thump for the heavy hits.
+      tone({ f0: vary(3400), f1: 900, dur: 0.018, vol: heavy ? 0.26 : 0.2, type: 'square' });
+      noise({ f0: vary(heavy ? 520 : 950), f1: 120, dur: heavy ? 0.15 : 0.09, vol: heavy ? 0.52 : 0.38 });
+      tone({ f0: vary(heavy ? 150 : 230), f1: 55, dur: heavy ? 0.14 : 0.08, vol: 0.38, type: 'triangle' });
+      if (heavy) tone({ f0: 88, f1: 36, dur: 0.2, vol: 0.55, type: 'sine' });
     },
-    clank() { tone({ f0: 1800, f1: 900, dur: 0.12, vol: 0.18, type: 'square' }); noise({ f0: 3000, f1: 800, dur: 0.08, vol: 0.15, filter: 'highpass' }); },
-    hurt() { tone({ f0: 300, f1: 90, dur: 0.22, vol: 0.35, type: 'sawtooth' }); noise({ f0: 700, f1: 200, dur: 0.15, vol: 0.25 }); },
-    thud() { tone({ f0: 120, f1: 40, dur: 0.25, vol: 0.5, type: 'sine' }); noise({ f0: 400, f1: 80, dur: 0.2, vol: 0.4 }); },
+    clank() { if (!gate('clank', 30)) return; tone({ f0: vary(1800), f1: 900, dur: 0.12, vol: 0.18, type: 'square' }); tone({ f0: 3600, f1: 1400, dur: 0.02, vol: 0.14, type: 'square' }); noise({ f0: 3000, f1: 800, dur: 0.08, vol: 0.15, filter: 'highpass' }); tone({ f0: 180, f1: 70, dur: 0.08, vol: 0.28, type: 'triangle' }); },
+    hurt() { if (!gate('hurt', 60)) return; tone({ f0: 300, f1: 90, dur: 0.22, vol: 0.35, type: 'sawtooth' }); noise({ f0: 700, f1: 200, dur: 0.15, vol: 0.25 }); tone({ f0: 110, f1: 45, dur: 0.16, vol: 0.4, type: 'sine' }); },
+    thud() { if (!gate('thud', 50)) return; tone({ f0: 120, f1: 40, dur: 0.25, vol: 0.5, type: 'sine' }); noise({ f0: 400, f1: 80, dur: 0.2, vol: 0.4 }); },
+    // Launcher pop: rising whip so the juggle reads by ear.
+    pop() { tone({ f0: 240, f1: 980, dur: 0.12, vol: 0.26, type: 'square' }); noise({ f0: 900, f1: 2600, dur: 0.1, vol: 0.2, filter: 'bandpass', q: 1.4 }); },
+    juggle() { if (!gate('juggle', 40)) return; tone({ f0: vary(740, 0.03), f1: 1180, dur: 0.07, vol: 0.18, type: 'triangle' }); },
+    // Radio-chirp under a Lance bark. The words are on screen; this says "he spoke".
+    voice() { if (!gate('voice', 400)) return; [520, 660, 440].forEach((f, i) => tone({ f0: vary(f, 0.04), dur: 0.035, delay: i * 0.045, vol: 0.07, type: 'square' })); },
+    /* Boss tells: one sound per move, plus a shared "last call" click right before impact. */
+    tellSlam() { tone({ f0: 196, dur: 0.07, vol: 0.3, type: 'square' }); tone({ f0: 147, dur: 0.09, delay: 0.12, vol: 0.3, type: 'square' }); },
+    tellJump() { tone({ f0: 320, f1: 1250, dur: 0.42, vol: 0.2, type: 'sine' }); tone({ f0: 330, f1: 1260, dur: 0.42, vol: 0.08, type: 'triangle', delay: 0.02 }); },
+    tellRain() { [1319, 1568, 1760, 2093, 1760].forEach((n, i) => tone({ f0: n, dur: 0.07, delay: i * 0.06, vol: 0.13, type: 'triangle' })); },
+    tellSummon() { tone({ f0: 880, dur: 0.1, vol: 0.2, type: 'square' }); tone({ f0: 660, dur: 0.14, delay: 0.12, vol: 0.2, type: 'square' }); },
+    lastCall() { if (!gate('lastCall', 90)) return; tone({ f0: 2600, f1: 2000, dur: 0.03, vol: 0.22, type: 'square' }); noise({ f0: 5000, f1: 3000, dur: 0.03, vol: 0.14, filter: 'highpass' }); },
     jump() { tone({ f0: 300, f1: 700, dur: 0.15, vol: 0.2, type: 'square' }); },
     pickup() { tone({ f0: 660, f1: 660, dur: 0.07, vol: 0.2 }); tone({ f0: 880, dur: 0.08, delay: 0.07, vol: 0.2 }); tone({ f0: 1320, dur: 0.12, delay: 0.14, vol: 0.2 }); },
     heal() { for (let i = 0; i < 4; i++) tone({ f0: 523 * Math.pow(1.25, i), dur: 0.12, delay: i * 0.06, vol: 0.18, type: 'triangle' }); },
@@ -117,9 +186,9 @@ WL.audio = (function () {
     throwSfx() { noise({ f0: 1200, f1: 3000, dur: 0.2, vol: 0.2, filter: 'bandpass' }); },
     grab() { noise({ f0: 2500, f1: 600, dur: 0.18, vol: 0.25, filter: 'bandpass', q: 2 }); tone({ f0: 400, f1: 500, dur: 0.1, vol: 0.15 }); },
     tape() { noise({ f0: 3500, f1: 1500, dur: 0.25, vol: 0.3, filter: 'bandpass', q: 3 }); },
-    enemyDie() { tone({ f0: 500, f1: 80, dur: 0.3, vol: 0.3, type: 'sawtooth' }); noise({ f0: 1500, f1: 200, dur: 0.3, vol: 0.3 }); },
-    shuriken() { tone({ f0: 1500, f1: 700, dur: 0.15, vol: 0.15, type: 'triangle' }); },
-    steam() { noise({ f0: 3000, f1: 1200, dur: 0.6, vol: 0.25, filter: 'highpass', attack: 0.05 }); },
+    enemyDie() { if (!gate('enemyDie', 45)) return; tone({ f0: 500, f1: 80, dur: 0.3, vol: 0.3, type: 'sawtooth' }); noise({ f0: 1500, f1: 200, dur: 0.3, vol: 0.3 }); },
+    shuriken() { if (!gate('shuriken', 40)) return; tone({ f0: 1500, f1: 700, dur: 0.15, vol: 0.15, type: 'triangle' }); },
+    steam() { if (!gate('steam', 200)) return; noise({ f0: 3000, f1: 1200, dur: 0.6, vol: 0.25, filter: 'highpass', attack: 0.05 }); },
     fart() {
       if (!ctx || muted) return;
       // the star of the show: low sawtooth with vibrato, pitch drop, gritty noise
@@ -142,16 +211,16 @@ WL.audio = (function () {
     },
     bossRoar() { tone({ f0: 90, f1: 45, dur: 0.9, vol: 0.5, type: 'sawtooth' }); noise({ f0: 500, f1: 100, dur: 0.9, vol: 0.4 }); },
     slam() { tone({ f0: 80, f1: 30, dur: 0.4, vol: 0.7, type: 'sine' }); noise({ f0: 600, f1: 60, dur: 0.4, vol: 0.5 }); },
-    splat() { noise({ f0: 1200, f1: 200, dur: 0.25, vol: 0.35, q: 2 }); tone({ f0: 300, f1: 80, dur: 0.2, vol: 0.2, type: 'triangle' }); },
+    splat() { if (!gate('splat', 40)) return; noise({ f0: 1200, f1: 200, dur: 0.25, vol: 0.35, q: 2 }); tone({ f0: 300, f1: 80, dur: 0.2, vol: 0.2, type: 'triangle' }); },
     levelClear() {
       const notes = [523, 659, 784, 1047, 784, 1047, 1319];
       notes.forEach((n, i) => tone({ f0: n, dur: 0.18, delay: i * 0.11, vol: 0.22, type: 'square' }));
     },
     gameOver() { [440, 415, 392, 370, 349, 330, 220].forEach((n, i) => tone({ f0: n, dur: 0.3, delay: i * 0.22, vol: 0.25, type: 'triangle' })); },
     oneUp() { [660, 880, 1100, 1320].forEach((n, i) => tone({ f0: n, dur: 0.14, delay: i * 0.08, vol: 0.2 })); },
-    break() { noise({ f0: 2500, f1: 300, dur: 0.3, vol: 0.4 }); tone({ f0: 800, f1: 200, dur: 0.15, vol: 0.2, type: 'square' }); },
-    shatter() { noise({ f0: 3800, f1: 600, dur: 0.28, vol: 0.45, filter: 'highpass' }); tone({ f0: 1600, f1: 400, dur: 0.12, vol: 0.22, type: 'square' }); },
-    clatter() { noise({ f0: 2000, f1: 400, dur: 0.22, vol: 0.35, filter: 'bandpass' }); tone({ f0: 520, f1: 180, dur: 0.15, vol: 0.25, type: 'triangle' }); },
+    break() { if (!gate('break', 40)) return; noise({ f0: 2500, f1: 300, dur: 0.3, vol: 0.4 }); tone({ f0: 800, f1: 200, dur: 0.15, vol: 0.2, type: 'square' }); },
+    shatter() { if (!gate('shatter', 40)) return; noise({ f0: 3800, f1: 600, dur: 0.28, vol: 0.45, filter: 'highpass' }); tone({ f0: 1600, f1: 400, dur: 0.12, vol: 0.22, type: 'square' }); },
+    clatter() { if (!gate('clatter', 40)) return; noise({ f0: 2000, f1: 400, dur: 0.22, vol: 0.35, filter: 'bandpass' }); tone({ f0: 520, f1: 180, dur: 0.15, vol: 0.25, type: 'triangle' }); },
     whoosh() { noise({ f0: 1200, f1: 180, dur: 0.28, vol: 0.28, filter: 'lowpass', attack: 0.04 }); },
     waveClear() {
       [659, 880, 1046, 1318].forEach((n, i) => tone({ f0: n, dur: 0.14, delay: i * 0.07, vol: 0.28, type: 'square' }));
@@ -212,6 +281,8 @@ WL.audio = (function () {
 
   return {
     init, unlock, sfx, playMusic, stopMusic, toggleMute, setMuted, setVolume, cycleVolume, volumeLabel,
-    get muted() { return muted; }, get unlocked() { return unlocked; }, get volume() { return volume; }
+    duck, setMusicLevel, cycleMusic, musicLabel,
+    get muted() { return muted; }, get unlocked() { return unlocked; }, get volume() { return volume; },
+    get musicLevel() { return musicLevel; }
   };
 })();

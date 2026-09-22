@@ -6,20 +6,14 @@
 WL.input = (function () {
   // Two layouts on purpose:
   //   arcade (right hand on JKL) and PC (left hand on WASD, nearby Q/E/R/F/Space).
-  const KEYMAP = {
-    ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
-    a: 'left', d: 'right', w: 'up', s: 'down',
-    A: 'left', D: 'right', W: 'up', S: 'down',
-    e: 'attack', E: 'attack', j: 'attack', J: 'attack', z: 'attack', Z: 'attack',
-    k: 'jump', K: 'jump', x: 'jump', X: 'jump',
-    q: 'special', Q: 'special', l: 'special', L: 'special', c: 'special', C: 'special',
-    r: 'tool', R: 'tool', i: 'tool', I: 'tool', v: 'tool', V: 'tool', u: 'tool', U: 'tool',
-    f: 'fart', F: 'fart', b: 'fart', B: 'fart',
-    ' ': 'jump',
-    Enter: 'start', p: 'pause', P: 'pause', Escape: 'pause',
-    m: 'mute', M: 'mute',
-    '\\': 'fullscreen', F11: 'fullscreen'
-  };
+  // The live tables (and any player remaps) live in WL.settings.
+  const ST = WL.settings;
+  const KEYMAP = ST.keyMap;
+  const PAD_BUTTONS = ST.padMap;
+
+  // Remap capture: the next key / pad button goes to `cb` instead of the game.
+  let capture = null;
+  let padHold = false;
 
   const held = {};
   const keyDown = {};
@@ -94,9 +88,21 @@ WL.input = (function () {
       }
       return;
     }
-    const act = KEYMAP[e.key];
+    const k = ST.norm(e.key);
+    if (capture && capture.kind === 'key') {
+      if (!down || e.repeat) return;
+      e.preventDefault();
+      const c = capture; capture = null;
+      c.cb(k === 'Escape' && c.cancelOnEscape !== false ? null : k);
+      return;
+    }
+    if (capture && capture.kind === 'pad') {
+      if (down && !e.repeat && k === 'Escape') { e.preventDefault(); const c = capture; capture = null; c.cb(null); }
+      return;
+    }
+    const act = KEYMAP[k];
     if (!act) return;
-    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', '/', "'"].includes(e.key) && !e.ctrlKey && !e.metaKey) e.preventDefault();
     if (down) {
       if (e.repeat) { held[act] = true; return; }
       keyDown[act] = true;
@@ -194,15 +200,10 @@ WL.input = (function () {
     }
   }
 
-  // Standard mapping: A jump, B fart, X attack, Y spray, LB/RB toolbox, Start pause.
-  // Triggers (6, 7) are analog and easy to brush, so they are not bound.
-  // Back (8) pauses. Start (9) confirms menus and, during a fight, opens pause.
-  const PAD_BUTTONS = {
-    0: 'jump', 1: 'fart', 2: 'attack', 3: 'special',
-    4: 'tool', 5: 'tool',
-    8: 'pause', 9: 'start',
-    12: 'up', 13: 'down', 14: 'left', 15: 'right'
-  };
+  // Default mapping lives in WL.settings: A jump, B fart, X attack, Y spray,
+  // LB/RB toolbox, Back pause. Triggers (6, 7) are analog and easy to brush,
+  // so they are only bound if the player remaps onto them.
+  // Start (9) confirms menus and, during a fight, opens pause.
 
   function setPad(action, on) {
     const was = !!padDown[action];
@@ -230,6 +231,20 @@ WL.input = (function () {
     }
     gamepad.index = pad.index;
     const b = pad.buttons;
+    if (capture && capture.kind === 'pad') {
+      for (const k in padDown) if (padDown[k]) setPad(k, false);
+      const down = [];
+      for (let i = 0; i < b.length; i++) if (b[i] && (b[i].pressed || b[i].value > 0.55)) down.push(i);
+      // Wait for the button that opened the prompt to come back up first.
+      if (!capture.armed) { if (!down.length) capture.armed = true; return; }
+      const hit = down.find(i => !ST.RESERVED_PAD.includes(i) || i === 9);
+      if (hit != null) { const c = capture; capture = null; padHold = true; c.cb(hit === 9 ? null : hit); }
+      return;
+    }
+    if (padHold) {
+      if (b.some(btn => btn && (btn.pressed || btn.value > 0.55))) return;
+      padHold = false;
+    }
     const seen = {};
     for (const i in PAD_BUTTONS) {
       const action = PAD_BUTTONS[i];
@@ -344,10 +359,47 @@ WL.input = (function () {
   }
 
   // What the corner chrome calls each action. Keyboard is the desktop
-  // picture; a connected pad swaps in the face buttons. Touch targets stay.
-  const KEY_BADGE = { attack: 'E', jump: 'SPC', special: 'Q', tool: 'R', fart: 'F', pause: 'ESC' };
-  const PAD_BADGE = { attack: 'X', jump: 'A', special: 'Y', tool: 'RB', fart: 'B', pause: 'START' };
-  function badgeFor(id) { return (gamepad.connected ? PAD_BADGE : KEY_BADGE)[id] || ''; }
+  // picture; a connected pad swaps in the face buttons. Both follow remaps.
+  // Touch targets stay where they are.
+  function badgeFor(id) {
+    if (gamepad.connected) return id === 'pause' ? 'START' : ST.padFor(id);
+    return ST.keysFor(id, 1)[0] || '';
+  }
+  const TOUCH_LABEL = { attack: 'ATK', jump: 'JMP', special: 'SPR', tool: 'BOX', fart: 'FART', pause: 'II' };
+  /** Short control name for prompts: "E/J" on keyboard, "X" on a pad, "ATK" on touch. */
+  function hint(id, n) {
+    if (touch.enabled && !(WL.display && WL.display.pc) && !gamepad.connected) return TOUCH_LABEL[id] || id.toUpperCase();
+    if (gamepad.connected) return id === 'pause' ? 'START' : ST.padFor(id);
+    return ST.keysFor(id, n || 2).join('/') || '--';
+  }
+  /** Replace {attack}, {jump}, ... in tutorial copy with the live bindings. */
+  function fillKeys(str) {
+    return String(str).replace(/\{(\w+)\}/g, (m, id) => hint(id, 2));
+  }
+  function moveHint(keysOnly) {
+    if (gamepad.connected && !keysOnly) return 'STICK/D-PAD';
+    const labels = ['up', 'left', 'down', 'right'].map(a => ST.keysFor(a, 1)[0]);
+    const arrows = arrowsIntact();
+    const prim = labels.every(l => l.length === 1) ? labels.join('') : labels.join(' ');
+    if (prim === 'UP LF DN RT') return 'ARROWS';
+    return arrows ? prim + '/ARROWS' : prim;
+  }
+  function arrowsIntact() {
+    return KEYMAP.ArrowUp === 'up' && KEYMAP.ArrowDown === 'down' && KEYMAP.ArrowLeft === 'left' && KEYMAP.ArrowRight === 'right';
+  }
+  function legend() {
+    if (gamepad.connected) {
+      return `PAD: STICK MOVE   ${hint('attack')} ATK   ${hint('jump')} JUMP   ${hint('special')} SPRAY   ${hint('tool')} BOX   ${hint('fart')} FART   START PAUSE`;
+    }
+    return `${moveHint()} MOVE   ${hint('attack')} ATK   ${hint('jump')} JUMP   ${hint('special')} SPRAY   ${hint('tool')} BOX   ${hint('fart', 1)} FART`;
+  }
+  function beginCapture(kind, cb) {
+    capture = { kind, cb, armed: false };
+    for (const k in keyDown) keyDown[k] = false;
+    for (const k in held) held[k] = false;
+    queue.length = 0;
+  }
+  function cancelCapture() { capture = null; }
   function hexAlpha(h, a) {
     let hex = String(h).replace('#', '');
     if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
@@ -401,8 +453,10 @@ WL.input = (function () {
   function drawControlChrome(ctx, opts) {
     const pad = !!gamepad.connected;
     const H = WL.H;
+    // Player-chosen overlay strength, capped so the plates never go opaque.
+    const base = Math.max(0.2, Math.min(0.85, opts.opacity != null ? opts.opacity : ST.data.overlay));
     ctx.save();
-    ctx.globalAlpha = 0.55;
+    ctx.globalAlpha = base;
     ctx.lineWidth = 1.5;
 
     // ---- move cluster, bottom left. Plates stay see-through so a goon
@@ -421,11 +475,14 @@ WL.input = (function () {
         size: 5, align: 'center', color: '#d5e6ff', stroke: '#000', strokeWidth: 2
       });
     } else {
-      drawKeycap(ctx, mx + 56, my + 26, 'W', held.up);
-      drawKeycap(ctx, mx + 34, my + 44, 'A', held.left);
-      drawKeycap(ctx, mx + 56, my + 44, 'S', held.down);
-      drawKeycap(ctx, mx + 78, my + 44, 'D', held.right);
-      WL.text.draw(ctx, 'OR ARROWS', mx + mw / 2, my + 56, {
+      const cap = a => ST.keysFor(a, 1)[0];
+      const wide = ['up', 'left', 'down', 'right'].some(a => cap(a).length > 1);
+      const gap = wide ? 30 : 22;
+      drawKeycap(ctx, mx + 56, my + 26, cap('up'), held.up);
+      drawKeycap(ctx, mx + 56 - gap, my + 44, cap('left'), held.left);
+      drawKeycap(ctx, mx + 56, my + 44, cap('down'), held.down);
+      drawKeycap(ctx, mx + 56 + gap, my + 44, cap('right'), held.right);
+      WL.text.draw(ctx, arrowsIntact() && cap('up') !== 'UP' ? 'OR ARROWS' : 'REMAPPED', mx + mw / 2, my + 56, {
         size: 5, align: 'center', color: '#d5e6ff', stroke: '#000', strokeWidth: 2
       });
     }
@@ -459,7 +516,7 @@ WL.input = (function () {
       });
       for (const b of touch.buttons) {
         const down = !!held[b.id];
-        ctx.globalAlpha = down ? 1 : 0.55;
+        ctx.globalAlpha = down ? 1 : base;
         const boxMissing = b.id === 'tool' && opts.hasToolbox === false;
         const disabled = (b.id === 'fart' && opts.fartReady === false) || boxMissing;
         const armed = b.id === 'fart' && opts.fartReady;
@@ -533,6 +590,8 @@ WL.input = (function () {
   return {
     attach, beginFrame, axis, drawTouch, consumeAny, layoutButtons, rumble,
     held, pressed, touch, pointer, gamepad,
+    badgeFor, hint, fillKeys, legend, moveHint, beginCapture, cancelCapture,
+    get capturing() { return capture ? capture.kind : null; },
     get touchEnabled() { return touch.enabled && !(WL.display && WL.display.pc); },
     set touchEnabled(v) { touch.enabled = v; }
   };

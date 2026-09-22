@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const { createCanvas, Image, GlobalFonts } = require('@napi-rs/canvas');
 const root = process.argv[2] || require('node:path').resolve(__dirname, '..');
 GlobalFonts.registerFromPath(root + '/assets/fonts/press-start-2p.ttf', 'Press Start 2P');
-function boot(width,height,dpr,coarse){
+function memStore(){const m=new Map();return{getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k),_m:m}}
+function boot(width,height,dpr,coarse,storage){
   const listeners = {}, clisteners = {}, dl = {}, canvas = createCanvas(640,360);
   canvas.style={};canvas.classList={toggle(){}};
   canvas.addEventListener=(k,fn)=>{if(!clisteners[k])clisteners[k]=fn};
@@ -12,11 +13,11 @@ function boot(width,height,dpr,coarse){
   const context={console,Math,Promise,performance:{now:()=>0},setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},innerWidth:width,innerHeight:height,devicePixelRatio:dpr,
     matchMedia:q=>({matches:q.includes('coarse')?coarse:q.includes('fine')?!coarse:false,addEventListener(){},removeEventListener(){}}),
     addEventListener:(k,fn)=>(listeners[k]??=[]).push(fn),navigator:{maxTouchPoints:coarse?5:0,getGamepads:()=>[]},
-    localStorage:{getItem:()=>null,setItem(){}},location:{hash:''},requestAnimationFrame:fn=>context.frame=fn,
+    localStorage:storage||memStore(),location:{hash:''},requestAnimationFrame:fn=>context.frame=fn,
     document:{getElementById:()=>canvas,createElement:()=>createCanvas(1,1),addEventListener:(k,fn)=>(dl[k]??=[]).push(fn),fonts:{load:()=>Promise.resolve()}},
     Image:class{set src(src){try{const im=new Image();im.src=fs.readFileSync(root+'/'+src);this.width=im.width;this.height=im.height;this.onload?.()}catch{this.onerror?.()}}}
   };context.window=context;vm.createContext(context);
-  for(const f of ['util','assets','input','audio','voice','sprites','entities','levels','scenes','main'])vm.runInContext(fs.readFileSync(root+'/js/'+f+'.js','utf8'),context,{filename:f+'.js'});
+  for(const f of ['util','settings','assets','input','audio','voice','sprites','entities','levels','options','scenes','main'])vm.runInContext(fs.readFileSync(root+'/js/'+f+'.js','utf8'),context,{filename:f+'.js'});
   // Images above test loading/fallback, not cutscene raster composition.
   context.WL.assets.get=()=>null;
   return {context,canvas,listeners,clisteners,dl,WL:context.WL};

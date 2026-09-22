@@ -670,10 +670,10 @@
       ],
       pickups: [{ kind: 'beans', x: 720, y: 330 }, { kind: 'chip', x: 1350, y: 220 }],
       waves: [
-        wave(260, [grp(['broccoli', 1, { side: 1 }])], { tutorial: 'E OR J: SCREWDRIVER, WRENCH, PIPE WRENCH. THREE TOOLS. ONE ARGUMENT.' }),
+        wave(260, [grp(['broccoli', 1, { side: 1 }])], { tutorial: '{attack}: SCREWDRIVER, WRENCH, PIPE WRENCH. THREE TOOLS. ONE ARGUMENT.' }),
         wave(560, [grp(['broccoli', 1, { side: 1 }], ['sprout', 2, { side: -1 }])], { tutorial: 'WALK INTO THEM. DUCT TAPE. KNEE, OR THROW THEM AT THEIR FRIENDS.' }),
-        wave(950, [grp(['celery', 1, { side: 1 }], ['broccoli', 1, { side: 1 }]), grp(['sprout', 3, { side: -1 }])], { tutorial: 'Q: REFRIGERANT. FREEZES GREENS, NICKS YOUR HP. R: THE TOOLBOX.' }),
-        wave(1450, [grp(['broccoli', 2, { side: 1 }], ['celery', 1, { side: -1 }]), grp(['sprout', 2, { side: 1 }], ['broccoli', 1, { side: -1 }])], { tutorial: 'BEANS, CHILI, LEFTOVERS. FILL THE GREEN METER. THEN APOLOGIZE.' }),
+        wave(950, [grp(['celery', 1, { side: 1 }], ['broccoli', 1, { side: 1 }]), grp(['sprout', 3, { side: -1 }])], { tutorial: '{special}: REFRIGERANT. FREEZES GREENS, NICKS YOUR HP. {tool}: THE TOOLBOX.' }),
+        wave(1450, [grp(['broccoli', 2, { side: 1 }], ['celery', 1, { side: -1 }]), grp(['sprout', 2, { side: 1 }], ['broccoli', 1, { side: -1 }])], { tutorial: 'BEANS, CHILI, LEFTOVERS. FILL THE GREEN METER, THEN PRESS {fart}. TIP: WAIT A BEAT BEFORE THE 3RD HIT FOR A WRENCH POP.' }),
         wave(2050, [grp(['celery', 2, { side: 1 }], ['broccoli', 2, { side: -1 }], ['sprout', 2, { side: 1 }])]),
         wave(2400, [grp(['broccoli', 1, { side: 1, elite: true }], ['celery', 1, { side: -1 }]), grp(['sprout', 4, { side: 1 }])])
       ]

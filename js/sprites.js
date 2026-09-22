@@ -351,6 +351,16 @@ WL.sprites = (function () {
         fe = { x: 20, y: -52 }; fh = { x: 30, y: -46 }; toolKind = 'pipewrench'; toolAng = -0.15;
         be = { x: 4, y: -54 }; bh2 = { x: 24, y: -48 };
         break;
+      case 'popWind':
+        crouch = 7; lean = 3; lf = { x: -14, y: 0 }; rf = { x: 14, y: 0 };
+        fe = { x: 14, y: -44 }; fh = { x: 24, y: -30 }; toolKind = 'wrench'; toolAng = 1.3;
+        be = { x: -14, y: -48 }; bh2 = { x: -6, y: -40 };
+        break;
+      case 'uppercut':
+        lean = 2; lf = { x: -10, y: 0 }; rf = { x: 12, y: -3 };
+        fe = { x: 18, y: -74 }; fh = { x: 24, y: -94 }; toolKind = 'wrench'; toolAng = -1.35;
+        be = { x: -14, y: -54 }; bh2 = { x: -4, y: -48 };
+        break;
       case 'sweepWind':
         lean = -4; lf = { x: -10, y: 0 }; rf = { x: 10, y: 0 };
         fe = { x: -12, y: -60 }; fh = { x: -30, y: -58 }; toolKind = 'pipewrench'; toolAng = Math.PI + 0.3;
@@ -1168,6 +1178,22 @@ WL.sprites = (function () {
     const jab = pose === 'jab';
     const kick = pose === 'jumpkick';
 
+    if (pose === 'pop') {
+      // Wrench Pop: a vertical crescent rising in front of Lance.
+      const r = 34, a = Math.PI * 0.55 - u * Math.PI * 0.9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(22, 10, r, a, a + 0.9);
+      ctx.strokeStyle = 'rgba(120,220,255,0.4)'; ctx.lineWidth = 14; ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(22, 10, r, a + 0.1, a + 0.8);
+      ctx.strokeStyle = '#bff4ff'; ctx.lineWidth = 6; ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(22, 10, r, a + 0.2, a + 0.7);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.restore();
+      return;
+    }
     if (jab) {
       // Screwdriver rapid precision thrust streak: multi-line neon cyan/white speed lines
       const len = 42 + u * 28;

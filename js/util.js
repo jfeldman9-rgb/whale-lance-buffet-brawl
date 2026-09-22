@@ -155,6 +155,16 @@ WL.draw = {
     const srx = rx * s;
     const sry = (ry || rx * 0.35) * s;
     const a = Math.min(0.5, 0.42 * s);
+    // One cached radial sprite, stretched per entity, instead of a new
+    // gradient object for every body every frame.
+    const spr = WL.draw._shadowSprite();
+    if (spr) {
+      const a0 = ctx.globalAlpha;
+      ctx.globalAlpha = a0 * a;
+      ctx.drawImage(spr, x - srx, y - sry, srx * 2, sry * 2);
+      ctx.globalAlpha = a0;
+      return;
+    }
     ctx.save();
     const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(1, srx));
     g.addColorStop(0, `rgba(0,0,0,${a})`);
@@ -164,6 +174,35 @@ WL.draw = {
     ctx.beginPath();
     ctx.ellipse(x, y, srx, sry, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  },
+  _shadowSprite() {
+    if (this._shadow !== undefined) return this._shadow;
+    this._shadow = null;
+    try {
+      const c = document.createElement('canvas');
+      c.width = 64; c.height = 64;
+      const g = c.getContext('2d');
+      const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(0.65, 'rgba(0,0,0,0.6)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 64);
+      this._shadow = c;
+    } catch (e) { this._shadow = null; }
+    return this._shadow;
+  },
+  /** Diagonal stripes: a shape cue for "low" that doesn't rely on hue. */
+  hatch(ctx, x, y, w, h, color) {
+    if (w <= 0 || h <= 0) return;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.strokeStyle = color || 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = Math.max(1, h * 0.28);
+    ctx.beginPath();
+    for (let i = -h; i < w + h; i += Math.max(3, h * 0.8)) { ctx.moveTo(x + i, y + h); ctx.lineTo(x + i + h, y); }
+    ctx.stroke();
     ctx.restore();
   },
   // arcade-style bar
