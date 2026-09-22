@@ -6,7 +6,7 @@ Plain HTML5 Canvas + vanilla JavaScript. No build step, no dependencies. Plays o
 
 The showcase pass tightens the cabinet feel (hit-stop, a directional camera punch, attack buffering, floor tells before dashes and the froyo spoon) and rewrites the mid-fight voice: stage banners, enemy cards, combo ranks, Volcano Fart one-liners, and the ending. The ship temperature stays on the HUD so the cruise reads during the fight.
 
-The canvas backing store matches the window times `devicePixelRatio` (capped, lower on a phone) so the picture is sharp on a retina desktop and still light on a handset. Pause → Display → Classic keeps the old 640×360 nearest-neighbor look. The choice is remembered in this browser.
+The canvas now renders at device pixel density on phones and desktops, up to 3840×2160. Auto uses native density; Sharp supersamples low-density screens at 2× or higher. HD modes use smooth edges and no CRT stripes. Pause → Display → Classic retains the 640×360 nearest-neighbor picture and scanlines. The choice is remembered, and changing display quality never changes the input hints or camera lead. The bundled arcade font loads without a Google Fonts connection.
 
 During a stage the control picture stays on screen the whole time, on phones and desktops: touch buttons in the corners, a WASD / arrow diagram (or the pad, if one is connected). It does not hide after the tutorial.
 
@@ -130,3 +130,16 @@ WL.game.debug.invuln()    // toggle invulnerability on
 ```
 
 Add `#fps` to the URL to show a frame counter.
+
+## HD rendering verification
+
+The deterministic regression harness uses Node.js and `@napi-rs/canvas` (development only). Run `node tools/verify-hd.cjs` with that package available. It exercises phone/retina/4K sizing, display-mode/input independence, keyboard aliases, gamepad mappings, every touch button, all four stage renderers, gameplay updates, and background auto-pause. Set `WL_CAPTURE_DIR` to an existing directory to save rendered stage/title images. This is a native Canvas simulation, not a Safari or physical-gamepad test.
+
+## Next improvements
+
+- Detailed character art and animation frames would provide a larger stylistic upgrade than further resolution increases. Preserve the current poses, hitboxes and timing.
+- The persistent control panels cover part of the fighting area. A future optional opacity setting could improve visibility without moving the touch targets.
+- Save progress between decks; currently reloading loses the run.
+- Add a portrait-orientation hint and test sustained high-resolution performance on real iPhones; Classic remains the low-cost fallback.
+
+The public Pages build was behind `main` at the start of this update. Always verify the public `js/main.js` after publishing; a merged graphics commit alone does not prove deployment.
