@@ -1297,7 +1297,7 @@
     }
     enter() {
       // Keep the checkpoint on disk so Continue also works after a reload.
-      WL.settings.saveRun({ level: this.levelIndex, wave: this.wave, score: this.score, fart: 0 });
+      WL.settings.saveRun({ level: this.levelIndex, wave: this.wave, score: Math.floor(this.score / 2), fart: 0 });
     }
     rowAt(pt) {
       for (let i = 0; i < this.items.length; i++) {
