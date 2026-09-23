@@ -413,9 +413,13 @@ WL.input = (function () {
 
   function drawKeycap(ctx, x, y, label, down) {
     const w = Math.max(16, label.length * 7 + 8), h = 15;
-    WL.draw.fillRRect(ctx, x - w / 2, y - h / 2, w, h, 3,
-      down ? '#ffe14a' : 'rgba(10,14,28,0.94)',
-      down ? '#fff6c8' : 'rgba(255,255,255,0.92)');
+    // Glossy keycap: a raised face over a darker skirt, highlight on the top edge.
+    WL.draw.fillRRect(ctx, x - w / 2, y - h / 2 + 1.5, w, h, 3, down ? '#8a6a00' : 'rgba(2,4,12,0.9)');
+    const kg = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
+    if (down) { kg.addColorStop(0, '#fff3a0'); kg.addColorStop(1, '#ffc21a'); }
+    else { kg.addColorStop(0, 'rgba(70,84,120,0.95)'); kg.addColorStop(0.5, 'rgba(22,28,48,0.95)'); kg.addColorStop(1, 'rgba(10,14,28,0.95)'); }
+    WL.draw.fillRRect(ctx, x - w / 2, y - h / 2, w, h, 3, kg, down ? '#fff6c8' : 'rgba(255,255,255,0.85)');
+    ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillRect(x - w / 2 + 3, y - h / 2 + 1.2, w - 6, 1);
     WL.text.draw(ctx, label, x, y - 5, {
       size: label.length > 2 ? 5 : 7, align: 'center',
       color: down ? '#1a1204' : '#fff', shadow: false
@@ -438,7 +442,9 @@ WL.input = (function () {
   }
 
   function drawStickGlyph(ctx, cx, cy, r, live) {
-    WL.draw.circle(ctx, cx, cy, r, 'rgba(255,255,255,0.14)', 'rgba(255,255,255,0.88)');
+    const sg = ctx.createRadialGradient(cx, cy - r * 0.4, 1, cx, cy, r);
+    sg.addColorStop(0, 'rgba(255,255,255,0.22)'); sg.addColorStop(1, 'rgba(255,255,255,0.06)');
+    WL.draw.circle(ctx, cx, cy, r, sg, 'rgba(255,255,255,0.88)');
     drawArrow(ctx, cx, cy - r + 1, 0);
     drawArrow(ctx, cx, cy + r - 1, Math.PI);
     drawArrow(ctx, cx - r + 1, cy, -Math.PI / 2);
@@ -466,7 +472,7 @@ WL.input = (function () {
     // ---- move cluster, bottom left. Plates stay see-through so a goon
     // walking the rail is still visible behind the diagram. ----
     const mx = 8, my = H - 138, mw = 112, mh = 130;
-    WL.draw.fillRRect(ctx, mx, my, mw, mh, 8, 'rgba(6,8,20,0.08)', 'rgba(255,255,255,0.3)');
+    glassPlate(ctx, mx, my, mw, mh);
     WL.text.draw(ctx, pad ? 'PAD' : 'MOVE', mx + mw / 2, my + 4, {
       size: 7, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 3
     });
@@ -514,7 +520,7 @@ WL.input = (function () {
         x1 = Math.max(x1, b.x + b.r); y1 = Math.max(y1, b.y + b.r);
       }
       const plateX = x0 - 10, plateY = y0 - 16, plateW = (x1 - x0) + 20, plateH = (y1 - y0) + 26;
-      WL.draw.fillRRect(ctx, plateX, plateY, plateW, plateH, 8, 'rgba(6,8,20,0.08)', 'rgba(255,255,255,0.3)');
+      glassPlate(ctx, plateX, plateY, plateW, plateH);
       WL.text.draw(ctx, pad ? 'CONTROLLER' : 'KEYS', plateX + plateW / 2, plateY + 3, {
         size: 6, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 3
       });
@@ -524,8 +530,17 @@ WL.input = (function () {
         const boxMissing = b.id === 'tool' && opts.hasToolbox === false;
         const disabled = (b.id === 'fart' && opts.fartReady === false) || boxMissing;
         const armed = b.id === 'fart' && opts.fartReady;
-        const fill = disabled ? 'rgba(58,58,68,0.12)' : (armed ? 'rgba(136,255,102,0.3)' : hexAlpha(b.color, down ? 0.55 : 0.18));
-        WL.draw.circle(ctx, b.x, b.y, b.r, fill, down ? '#fff' : 'rgba(255,255,255,0.6)');
+        const col = armed ? '#88ff66' : b.color;
+        // Glass button: tinted see-through core, colored rim, gloss on top.
+        const bg = ctx.createRadialGradient(b.x, b.y - b.r * 0.5, 1, b.x, b.y, b.r);
+        if (disabled) { bg.addColorStop(0, 'rgba(120,120,130,0.18)'); bg.addColorStop(1, 'rgba(40,40,50,0.14)'); }
+        else { bg.addColorStop(0, hexAlpha(col, down ? 0.7 : 0.32)); bg.addColorStop(0.75, hexAlpha(col, down ? 0.5 : 0.14)); bg.addColorStop(1, hexAlpha(col, down ? 0.6 : 0.26)); }
+        WL.draw.circle(ctx, b.x, b.y, b.r, bg, 'rgba(0,0,0,0.55)');
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 1.5, 0, Math.PI * 2);
+        ctx.strokeStyle = disabled ? 'rgba(200,200,210,0.45)' : (down ? '#ffffff' : hexAlpha(col, 0.95)); ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(b.x, b.y - b.r * 0.45, b.r * 0.62, b.r * 0.3, 0, Math.PI, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fill();
+        ctx.lineWidth = 1.5;
         if (down) {
           ctx.strokeStyle = '#ffe14a'; ctx.lineWidth = 3;
           ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 3, 0, Math.PI * 2); ctx.stroke();
@@ -540,11 +555,22 @@ WL.input = (function () {
           WL.text.draw(ctx, badge, b.x + b.r + 4, b.y - 4, { size: 6, color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
         } else {
           WL.text.draw(ctx, b.label, b.x, b.y - 10, { size: 7, align: 'center', color: '#fff', stroke: '#000', strokeWidth: 3 });
-          WL.text.draw(ctx, badge, b.x, b.y + 1, { size: boxMissing ? 5 : 6, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 3 });
+          // Key / pad badge on a colored chip, like a console glyph.
+          const bs = boxMissing ? 5 : 6;
+          const cw = Math.max(12, WL.text.width(ctx, badge, bs) + 7), ch = bs + 5;
+          WL.draw.fillRRect(ctx, b.x - cw / 2, b.y - 1.5, cw, ch, ch / 2, boxMissing ? 'rgba(120,70,0,0.75)' : 'rgba(6,8,20,0.7)', disabled && !boxMissing ? 'rgba(200,200,210,0.5)' : hexAlpha(col, 0.95));
+          WL.text.draw(ctx, badge, b.x, b.y + 1, { size: bs, align: 'center', color: boxMissing ? '#ffe9a0' : '#ffe14a', stroke: '#000', strokeWidth: 2 });
         }
       }
     }
     ctx.restore();
+  }
+
+  function glassPlate(ctx, x, y, w, h) {
+    const pg = ctx.createLinearGradient(0, y, 0, y + h);
+    pg.addColorStop(0, 'rgba(255,255,255,0.08)'); pg.addColorStop(0.5, 'rgba(8,12,30,0.06)'); pg.addColorStop(1, 'rgba(4,6,16,0.12)');
+    WL.draw.fillRRect(ctx, x, y, w, h, 9, pg, 'rgba(255,255,255,0.32)');
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(x + 8, y + 1, w - 16, 1);
   }
 
   function drawTouch(ctx, opts = {}) {
