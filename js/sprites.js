@@ -454,8 +454,86 @@ WL.sprites = (function () {
    * o.pose: idle|walk|jab|smash|smashWind|sweep|spray|throw|grab|grabHit|jump|jumpkick|hurt|down|fart|fartCharge|victory|dead|carry
    * o.t: animation time (seconds), o.flash: white flash, o.thin: slim ending version, o.alpha
    */
+  /* ---- painted sprites (assets/art, see tools/bake_art.py) ----
+     Poses map onto baked frames; the little motion between frames (breathing,
+     walk bob, recoil, wobble) is added here. o.floorY (the deck under a jumping
+     body) turns on the silhouette cast shadow and the deck reflection. */
+  const LANCE_FRAME = { idle: 'idle', walk: 'walk0', jab: 'jab', smashWind: 'smashWind', smash: 'smash', sweepWind: 'sweepWind', sweep: 'sweep', popWind: 'popWind', uppercut: 'uppercut', spray: 'spray', throw: 'throw', grab: 'grab', grabHit: 'grabHit', jump: 'jump', jumpkick: 'jumpkick', hurt: 'hurt', down: 'down', dead: 'down', fartCharge: 'fartCharge', fart: 'fart', victory: 'victory', carry: 'carry' };
+  function underBody(ctx, name, f, x, y, o) {
+    if (o.floorY == null) return;
+    const z = Math.max(0, o.floorY - y);
+    if (WL.light.gloss) WL.art.reflect(ctx, name, f, x, o.floorY, z, { facing: o.facing, alpha: o.alpha, strength: WL.light.gloss });
+    WL.art.castShadow(ctx, name, f, x, o.floorY, z, { facing: o.facing, alpha: o.alpha });
+  }
+  function paintedLance(ctx, x, y, o) {
+    const pose = o.pose || 'idle', t = o.t || 0;
+    let f = LANCE_FRAME[pose] || 'idle';
+    const m = { facing: o.facing, alpha: o.alpha };
+    switch (pose) {
+      case 'idle': m.sy = 1 + Math.sin(t * 4) * 0.012; m.sx = 1 - Math.sin(t * 4) * 0.006; break;
+      case 'walk': f = Math.floor(t * 7) % 2 ? 'walk1' : 'walk0'; m.lift = Math.abs(Math.sin(t * Math.PI * 7)) * 1.4; break;
+      case 'hurt': m.rot = -0.08; break;
+      case 'fartCharge': x += Math.sin(t * 70) * 0.7; m.sy = 0.985 + Math.sin(t * 30) * 0.01; break;
+      case 'fart': m.sx = 1.04; m.sy = 0.97; break;
+      case 'victory': m.lift = Math.abs(Math.sin(t * 5)) * 2; break;
+      case 'dead': m.alpha = (o.alpha !== undefined ? o.alpha : 1); break;
+    }
+    underBody(ctx, 'lance', f, x, y, o);
+    if (o.flash) {
+      drawFlashed(ctx, x, y, 150, 250, (g) => paintedLance(g, 150, 250, Object.assign({}, o, { flash: false, floorY: null })));
+      return true;
+    }
+    WL.art.draw(ctx, 'lance', f, x, y, m);
+    if (pose === 'down' && !o.noStars) {
+      for (let i = 0; i < 3; i++) { const a = t * 5 + i * 2.1; D.circle(ctx, x + (o.facing < 0 ? 30 : -30) + Math.cos(a) * 12, y - 24 + Math.sin(a) * 4, 2.5, '#ffe14a', OUT); }
+    }
+    return true;
+  }
+
+  const PAINT_H = { broccoli: 80, carrot: 74, sprout: 44, celery: 92 };
+  function enemyFrame(type, pose, t) {
+    switch (pose) {
+      case 'walk': return Math.floor(t * 6) % 2 ? 'walk1' : 'walk0';
+      case 'windup': return 'windup';
+      case 'attack': case 'spit': return 'attack';
+      case 'kick': return type === 'carrot' ? 'kick' : 'attack';
+      case 'dash': return type === 'sprout' ? 'dash' : 'walk0';
+      case 'roll': return type === 'sprout' ? 'hurt' : 'walk1';
+      case 'hurt': case 'grabbed': case 'knockdown': return 'hurt';
+      case 'down': case 'dead': case 'thrown': return 'down';
+    }
+    return 'idle';
+  }
+  /** Painted enemy body; returns the painted height (for overlays) or 0 when there is no art. */
+  function paintedEnemy(ctx, x, y, e) {
+    if (!PAINT_H[e.type] || !WL.art.has(e.type)) return 0;
+    const t = e.t || 0, pose = e.pose || 'idle';
+    const f = enemyFrame(e.type, pose, t);
+    const m = { facing: e.facing, alpha: e.alpha };
+    const h = PAINT_H[e.type];
+    switch (pose) {
+      case 'idle': m.sy = 1 + Math.sin(t * 5) * 0.015; break;
+      case 'walk': m.lift = Math.abs(Math.sin(t * Math.PI * 6)) * 1.2; break;
+      case 'windup': x += Math.sin(t * 50) * 0.6; break;
+      case 'stunned': m.rot = Math.sin(t * 12) * 0.06; break;
+      case 'dash': m.rot = e.type === 'sprout' ? 0 : 0.14; break;
+      case 'roll': m.rot = t * 14; m.pivot = h * 0.5; m.lift = -h * 0.2; break;
+      case 'knockdown': m.rot = -0.5 - Math.sin(t * 8) * 0.3; m.pivot = h * 0.5; break;
+      case 'thrown': m.rot = t * 14; m.pivot = h * 0.25; break;
+      case 'hurt': m.rot = -0.05; break;
+    }
+    underBody(ctx, e.type, f, x, y, e);
+    if (e.flash) {
+      drawFlashed(ctx, x, y, 150, 250, (g) => paintedEnemy(g, 150, 250, Object.assign({}, e, { flash: false, floorY: null })));
+      return h;
+    }
+    WL.art.draw(ctx, e.type, f, x, y, m);
+    return h;
+  }
+
   function drawLance(ctx, x, y, o) {
     o = o || {};
+    if (!o.thin && WL.art.has('lance') && paintedLance(ctx, x, y, o)) return;
     if (o.flash) {
       drawFlashed(ctx, x, y, 150, 250, (f) => drawLance(f, 150, 250, Object.assign({}, o, { flash: false })));
       return;
@@ -1044,6 +1122,8 @@ WL.sprites = (function () {
   function drawEnemy(ctx, x, y, e) {
     const V = VEG[e.type];
     if (!V) return;
+    const ph = paintedEnemy(ctx, x, y, e);
+    if (ph) { enemyOverlays(ctx, x, y, e, ph); return; }
     if (e.flash) {
       drawFlashed(ctx, x, y, 150, 250, (f) => drawEnemy(f, 150, 250, Object.assign({}, e, { flash: false })));
       return;
@@ -1101,6 +1181,36 @@ WL.sprites = (function () {
     }
     ctx.restore();
     FLIP = false;
+  }
+
+  /** Status overlays on a painted enemy: KO stars, dizzy stars, frost shell, duct tape. */
+  function enemyOverlays(ctx, x, y, e, h) {
+    const t = e.t || 0, pose = e.pose;
+    ctx.save();
+    ctx.translate(x, y);
+    if (e.alpha !== undefined) ctx.globalAlpha = e.alpha;
+    const back = e.facing < 0 ? 1 : -1;
+    if (pose === 'down') for (let i = 0; i < 3; i++) { const a = t * 5 + i * 2.1; D.circle(ctx, back * h * 0.45 + Math.cos(a) * 10, -h * 0.28 + Math.sin(a) * 3, 2.2, '#ffe14a', OUT); }
+    if (pose === 'stunned') for (let i = 0; i < 4; i++) { const a = t * 6 + i * 1.57; D.circle(ctx, Math.cos(a) * 14, -h - 4 + Math.sin(a) * 4, 2.2, '#8ff', OUT); }
+    if (e.stunTint) {
+      ctx.fillStyle = 'rgba(170,225,255,0.34)';
+      ctx.beginPath(); ctx.ellipse(0, -h * 0.5, h * 0.36, h * 0.52, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#e4f7ff'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.25;
+      ctx.beginPath();
+      ctx.moveTo(-h * 0.12, -h * 0.82); ctx.lineTo(h * 0.04, -h * 0.5); ctx.lineTo(-h * 0.06, -h * 0.2);
+      ctx.moveTo(h * 0.16, -h * 0.74); ctx.lineTo(0, -h * 0.52); ctx.lineTo(h * 0.1, -h * 0.3);
+      ctx.stroke();
+    }
+    if (e.taped) {
+      for (let i = 0; i < 3; i++) {
+        const g = ctx.createLinearGradient(0, -h * 0.6 + i * 8, 0, -h * 0.6 + i * 8 + 5);
+        g.addColorStop(0, '#e2e4e8'); g.addColorStop(0.5, '#9a9ea8'); g.addColorStop(1, '#6a6e78');
+        ctx.fillStyle = g; ctx.strokeStyle = 'rgba(20,20,40,0.6)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.rect(-h * 0.24, -h * 0.6 + i * 8, h * 0.48, 5); ctx.fill(); ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
 
   /* ================= BOSS: Giant Froyo Cone ================= */

@@ -438,7 +438,148 @@
   }
   const CAUTION_AT = [470, 1330, 2240];
 
+  /* ---- painted Lido (assets/art plates) ----
+     sky + Diamond Head (0.04) | ocean + sailboats (0.1) | superstructure, pool
+     crowd and sun deck plates (0.45) | polished teak (1.0) with the buffet line
+     (0.78) and its reflection | deck props | a soft foreground (1.3). */
+  const FAR_W = 880, FAR_SPLIT = 0.5, FAR_SHORE = 108;
+  const MID_W = 420, MID_OVER = 26, MID_BASE = 192;
+  const MID_SEQ = [['lido-mid-ship', 1], ['lido-mid-pool', 1], ['lido-mid-deck', 1], ['lido-mid-pool', -1], ['lido-mid-ship', 1]];
+  const BUFFET_W = 224, BUFFET_AT = [420, 1330, 2060], BUFFET_BASE = WALL_BASE + 11;
+  const DECK_PROPS = [['bush', 118, 0.95], ['bush', 905, 0.9], ['platesStack', 1180, 1.1], ['bush', 1640, 1], ['bush', 2330, 0.95]];
+  const FG = [['bush', 360, 1.9], ['platesStack', 1210, 1.9], ['bush', 1980, 2.1], ['bush', 2900, 1.9]];
+  function lidoPainted() {
+    return !!(WL.art.plate('lido-far') && WL.art.plate('lido-mid-ship') && WL.art.plate('lido-mid-pool') && WL.art.plate('lido-mid-deck') && WL.art.plate('lido-floor'));
+  }
+  function farLayers() {
+    const P = WL.ARTDATA.plates['lido-far'];
+    const k = FAR_W / P.w, fh = P.h * k, split = fh * FAR_SPLIT;
+    const sky = WL.art.plateLayer('lido-far', FAR_W, FAR_SHORE + 2, 2, 0, (g, img) => g.drawImage(img, 0, 0, P.w, P.h * FAR_SPLIT + 2 / k, 0, FAR_SHORE - split, FAR_W, split + 2));
+    const sea = WL.art.plateLayer('lido-far', FAR_W, fh - split, 2, 0, (g, img) => g.drawImage(img, 0, P.h * FAR_SPLIT, P.w, P.h * (1 - FAR_SPLIT), 0, 0, FAR_W, fh - split));
+    return { sky, sea };
+  }
+  function midLayer(name, dir) {
+    const P = WL.ARTDATA.plates[name], mh = MID_W * P.h / P.w;
+    return WL.art.plateLayer(name, MID_W, mh, 3, 0.3, (g, img, w, h) => {
+      if (dir < 0) { g.translate(w, 0); g.scale(-1, 1); }
+      g.drawImage(img, 0, 0, w, h);
+    }, dir < 0 ? '-m' : '');
+  }
+  function buffetLayers() {
+    const P = WL.ARTDATA.plates['lido-buffet'];
+    if (!P || !WL.art.plate('lido-buffet')) return null;
+    const bh = BUFFET_W * P.h / P.w;
+    const body = WL.art.plateLayer('lido-buffet', BUFFET_W, bh, 3.2, 0);
+    const rh = bh * 0.5;
+    const refl = WL.art.plateLayer('lido-buffet', BUFFET_W, rh, 1.5, 0.8, (g, img, w, h) => {
+      g.save(); g.translate(0, bh * 0.7); g.scale(1, -0.7); g.drawImage(img, 0, 0, w, bh); g.restore();
+      g.globalCompositeOperation = 'destination-in';
+      const fade = g.createLinearGradient(0, 0, 0, h);
+      fade.addColorStop(0, 'rgba(0,0,0,0.9)'); fade.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = fade; g.fillRect(0, 0, w, h);
+    }, '-refl');
+    return { body, refl, bh };
+  }
+  function propLayer(f, blur, scale) {
+    const F = WL.art.frame('props', f);
+    if (!F || !WL.art.has('props')) return null;
+    const k = WL.ARTDATA.props.k * scale, w = F[2] * k, h = F[3] * k;
+    const e = WL.gfx.layer('fgprop-' + f + scale, w + 8, h + 8, 3, g => g.drawImage(WL.art.atlas('props'), F[0], F[1], F[2], F[3], 4, 4, w, h), blur);
+    return { e, w, h };
+  }
+  function lidoPaintedBg(ctx, camX, t) {
+    const G = WL.gfx, rich = !WL.perf.lite;
+    const sunX = 566 - camX * 0.02;
+    const far = farLayers();
+    G.tile(ctx, far.sky, camX * 0.04 + 30, 0);
+    G.tile(ctx, far.sea, camX * 0.1 + 30, FAR_SHORE);
+    if (rich) {
+      // sun glitter on the water, under the sun
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 22; i++) {
+        const wy = FAR_SHORE + 4 + (i * 7) % 40;
+        const wx = sunX - 60 + ((i * 37 + Math.floor(t * 4 + i) * 13) % 110) + (wy - FAR_SHORE) * 0.5;
+        ctx.globalAlpha = 0.18 + 0.4 * Math.abs(Math.sin(t * 3 + i));
+        ctx.fillStyle = '#fffbe0'; ctx.fillRect(wx, wy, 4 + (i % 3) * 3, 0.8);
+      }
+      ctx.restore();
+    }
+    // superstructure, pool crowd and sun deck
+    const mx = -camX * 0.45;
+    MID_SEQ.forEach(([name, dir], i) => {
+      const x = mx + i * (MID_W - MID_OVER);
+      if (x > W || x + MID_W < 0) return;
+      const e = midLayer(name, dir);
+      if (e) G.blit(ctx, e, x, MID_BASE - e.h);
+    });
+    // polished teak
+    const floor = WL.art.plateLayer('lido-floor', 560, H - WALL_BASE, 3, 0);
+    G.tile(ctx, floor, camX, WALL_BASE);
+    // far edge: the deck line and the sky's bounce in the lacquer
+    const ao = ctx.createLinearGradient(0, WALL_BASE, 0, WALL_BASE + 12);
+    ao.addColorStop(0, 'rgba(50,24,6,0.5)'); ao.addColorStop(1, 'rgba(50,24,6,0)');
+    ctx.fillStyle = ao; ctx.fillRect(0, WALL_BASE, W, 12);
+    // buffet line, standing on the deck, mirrored in the lacquer
+    const B = buffetLayers();
+    if (B) {
+      const bx0 = -camX * 0.78;
+      for (const at of BUFFET_AT) {
+        const x = bx0 + at;
+        if (x > W + 10 || x + BUFFET_W < -10) continue;
+        if (rich) { ctx.save(); ctx.globalAlpha = 0.5; G.blit(ctx, B.refl, x, BUFFET_BASE - 1); ctx.restore(); }
+        D.shadow(ctx, x + BUFFET_W / 2 - 14, BUFFET_BASE, BUFFET_W * 0.5, 6, 0);
+        G.blit(ctx, B.body, x, BUFFET_BASE - B.bh);
+        if (rich) {
+          // steam off the chafing dishes
+          ctx.save(); ctx.fillStyle = '#fff';
+          for (let i = 0; i < 4; i++) {
+            const k = (t * 0.8 + i * 0.29) % 1;
+            ctx.globalAlpha = 0.26 * (1 - k);
+            D.circle(ctx, x + BUFFET_W * (0.28 + i * 0.12) + Math.sin(t * 2 + i) * 3, BUFFET_BASE - B.bh * 0.66 - k * 20, 2.5 + k * 5);
+          }
+          ctx.restore();
+        }
+      }
+    }
+    if (rich) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const gx = sunX - 90;
+      const glare = ctx.createRadialGradient(gx, 250, 4, gx, 250, 170);
+      glare.addColorStop(0, 'rgba(255,232,180,0.3)'); glare.addColorStop(0.45, 'rgba(255,215,150,0.1)'); glare.addColorStop(1, 'rgba(255,210,140,0)');
+      ctx.fillStyle = glare; ctx.fillRect(gx - 170, WALL_BASE, 340, H - WALL_BASE);
+      ctx.restore();
+    }
+    // planters and the HOT FOOD caution signs along the back of the fight lane
+    if (WL.art.has('props')) {
+      for (const [f, wx, sc] of DECK_PROPS) {
+        const x = wx - camX;
+        if (x < -60 || x > W + 60) continue;
+        D.shadow(ctx, x, WALL_BASE + 12, 26 * sc, 5, 0);
+        WL.art.draw(ctx, 'props', f, x, WALL_BASE + 13, { sx: sc, sy: sc });
+      }
+      for (const wx of CAUTION_AT) {
+        const x = wx - camX + 20;
+        if (x < -40 || x > W + 40) continue;
+        if (rich) WL.art.reflect(ctx, 'props', 'caution', x, WALL_BASE + 17, 0, { strength: 0.3 });
+        D.shadow(ctx, x, WALL_BASE + 16, 20, 4, 0);
+        WL.art.draw(ctx, 'props', 'caution', x, WALL_BASE + 17);
+      }
+    }
+  }
+  /* Out-of-focus foreground that slides past faster than the deck. */
+  function lidoFg(ctx, camX) {
+    if (!lidoPainted() || !WL.art.has('props')) return;
+    for (const [f, wx, sc] of FG) {
+      const P = propLayer(f, WL.perf.lite ? 0 : 1.4, sc);
+      if (!P) continue;
+      const x = wx - camX * 1.3 - P.w / 2;
+      if (x > W + 20 || x + P.w < -20) continue;
+      WL.gfx.blit(ctx, P.e, x - 4, H + 12 - P.h * 0.55);
+    }
+  }
+
   function lidoBg(ctx, camX, t) {
+    if (lidoPainted()) { lidoPaintedBg(ctx, camX, t); return; }
     const G = WL.gfx, rich = !WL.perf.lite;
     // sky
     const sky = ctx.createLinearGradient(0, 0, 0, HOR);
@@ -979,7 +1120,7 @@
 
   const LEVELS = [
     {
-      id: 1, name: 'LIDO DECK BUFFET', short: 'LIDO DECK', temp: 94, subtitle: 'POOL DECK 11 — 94°F', music: 'lido', bg: lidoBg, length: 2600, palette: '#c99a5b',
+      id: 1, name: 'LIDO DECK BUFFET', short: 'LIDO DECK', temp: 94, subtitle: 'POOL DECK 11 — 94°F', music: 'lido', bg: lidoBg, fg: lidoFg, length: 2600, palette: '#c99a5b',
       banner: ['LIDO DECK', 'THE SALAD BAR CLOCKED IN'],
       intro: {
         title: 'LIDO DECK',

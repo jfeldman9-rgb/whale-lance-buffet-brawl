@@ -608,10 +608,10 @@
   const PAUSE_Y0 = 96, PAUSE_STEP = 18;
   // Key light per stage: the Lido sun sits high on the right; the indoor decks use overhead fixtures.
   const STAGE_LIGHT = {
-    1: { side: 1, cast: 0.34 },
+    1: { side: 1, cast: 0.34, gloss: 0.26 },
     2: { side: -1, cast: 0.18, rim: 'rgba(255,200,120,0.8)' },
-    3: { side: 1, cast: 0.2 },
-    4: { side: -1, cast: 0.16, rim: 'rgba(200,235,255,0.9)' }
+    3: { side: 1, cast: 0.2, gloss: 0.16 },
+    4: { side: -1, cast: 0.16, rim: 'rgba(200,235,255,0.9)', gloss: 0.18 }
   };
   class Play {
     constructor(game, levelIndex, carry) {
@@ -1057,6 +1057,7 @@
       this.drawTells(ctx, 'label');
       if (this.fartT >= 0) S.drawFartCloud(ctx, this.fartX - this.camX, this.fartY, this.fartT, p.facing);
       this.fx.draw(ctx, this.camX);
+      if (L.fg) L.fg(ctx, this.camX, this.t);
       ctx.restore();
       if (this.fartT >= 0 && this.fartT < 1.05) {
         const k = Math.sin(Math.min(1, this.fartT / 0.1) * Math.PI / 2) * Math.min(1, (1.05 - this.fartT) / 0.28);

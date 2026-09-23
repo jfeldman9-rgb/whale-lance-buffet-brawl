@@ -26,8 +26,8 @@ WL.display = {
    Sprites flip with ctx.scale(-1, 1), so they use side * facing locally.
    cast: opacity of the hard sun shadow (0 = overhead / soft only). */
 WL.light = {
-  side: 1, cast: 0.3, key: 'rgba(255,244,210,0.55)', rim: 'rgba(255,250,225,0.9)', shade: 'rgba(40,18,60,0.26)',
-  set(o) { Object.assign(this, { side: 1, cast: 0.3, key: 'rgba(255,244,210,0.55)', rim: 'rgba(255,250,225,0.9)', shade: 'rgba(40,18,60,0.26)' }, o || {}); }
+  side: 1, cast: 0.3, gloss: 0, key: 'rgba(255,244,210,0.55)', rim: 'rgba(255,250,225,0.9)', shade: 'rgba(40,18,60,0.26)',
+  set(o) { Object.assign(this, { side: 1, cast: 0.3, gloss: 0, key: 'rgba(255,244,210,0.55)', rim: 'rgba(255,250,225,0.9)', shade: 'rgba(40,18,60,0.26)' }, o || {}); }
 };
 
 /* Offscreen layer cache. Static art (skyline, deck tiles, loungers) is
@@ -247,7 +247,8 @@ WL.draw = {
     ctx.lineWidth = w || 1;
     ctx.stroke();
   },
-  shadow(ctx, x, y, rx, ry, z) {
+  /** noCast: the caller draws its own silhouette cast shadow (painted sprites). */
+  shadow(ctx, x, y, rx, ry, z, noCast) {
     const s = Math.max(0.25, 1 - (z || 0) / 160);
     const srx = rx * s;
     const sry = (ry || rx * 0.35) * s;
@@ -259,7 +260,7 @@ WL.draw = {
       const a0 = ctx.globalAlpha;
       const L = WL.light;
       // Hard-edged cast shadow thrown away from the sun, under the soft contact blob.
-      if (L.cast > 0 && !WL.perf.lite) {
+      if (L.cast > 0 && !WL.perf.lite && !(noCast && WL.display.mode !== 'classic')) {
         const hard = WL.draw._hardShadowSprite();
         if (hard) {
           const len = (1.2 + (z || 0) / 90) * srx;

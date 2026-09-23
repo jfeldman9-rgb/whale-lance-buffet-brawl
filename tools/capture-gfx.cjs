@@ -24,16 +24,23 @@ function boot(width, height, dpr, coarse) {
     addEventListener: (k, fn) => (listeners[k] ??= []).push(fn), navigator: { maxTouchPoints: coarse ? 5 : 0, getGamepads: () => [] },
     localStorage: { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }, location: { hash: '' }, requestAnimationFrame: fn => context.frame = fn,
     document: { getElementById: () => canvas, createElement: () => createCanvas(1, 1), addEventListener: (k, fn) => (dl[k] ??= []).push(fn), fonts: { load: () => Promise.resolve() } },
-    Image: class { set src(src) { try { const im = new Image(); im.src = fs.readFileSync(root + '/' + src); this.width = im.width; this.height = im.height; this.onload?.(); } catch { this.onerror?.(); } } }
+    // Real decoded images, so the painted atlases and plates are part of the picture.
+    Image: class extends Image { set src(src) { try { super.src = fs.readFileSync(root + '/' + src.split('?')[0]); this.onload?.(); } catch { this.onerror?.(); } } get src() { return super.src; } }
   };
   context.window = context; vm.createContext(context);
-  for (const f of ['util', 'settings', 'assets', 'input', 'audio', 'voice', 'sprites', 'entities', 'levels', 'options', 'scenes', 'main']) vm.runInContext(fs.readFileSync(root + '/js/' + f + '.js', 'utf8'), context, { filename: f + '.js' });
-  context.WL.assets.get = () => null;
+  for (const f of [...fs.readFileSync(root + '/index.html', 'utf8').matchAll(/<script src="js\/(\w+)\.js/g)].map(m => m[1])) vm.runInContext(fs.readFileSync(root + '/js/' + f + '.js', 'utf8'), context, { filename: f + '.js' });
+  // WL_NO_ART=1 renders the procedural fallback instead of the painted art.
+  if (process.env.WL_NO_ART) context.WL.assets.get = () => null;
+  else context.WL.assets.get = k => (k.startsWith('cut') ? null : context.WL.assets._img(k));
   return { context, canvas, clisteners, WL: context.WL };
 }
 
+(async () => {
 const env = boot(960, 540, 2, false);
+// Image decoding in @napi-rs/canvas finishes off the main thread.
+await new Promise(r => setTimeout(r, 400));
 const { WL, canvas } = env;
+const context0 = env.context;
 const ctx = canvas.getContext('2d');
 const save = name => { if (out) fs.writeFileSync(path.join(out, name + '.png'), canvas.toBuffer('image/png')); };
 const frame = draw => { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height); const rs = WL.display.renderScale; ctx.setTransform(rs, 0, 0, rs, 0, 0); draw(); };
@@ -85,7 +92,12 @@ const shots = [];
   const stamps = new Set([...html.matchAll(/\?v=([\w-]+)/g)].map(m => m[1]));
   const scripts = [...html.matchAll(/<script src="js\/(\w+)\.js\?v=/g)].map(m => m[1]);
   check(stamps.size === 1, 'one cache-bust stamp across css + scripts: ' + [...stamps].join(', '));
-  check(scripts.length === 12 && /css\/style\.css\?v=/.test(html), 'every script and the stylesheet are versioned');
+  const tags = [...html.matchAll(/<script src="js\//g)].length;
+  check(scripts.length === tags && scripts.includes('art') && scripts.includes('artdata') && /css\/style\.css\?v=/.test(html), 'every script and the stylesheet are versioned');
+  check(stamps.has('20260923-gfx2'), 'cache-bust stamp is 20260923-gfx2');
+  const data = context0.WL.ARTDATA;
+  for (const a of ['lance', 'broccoli', 'carrot', 'sprout', 'celery', 'props']) check(fs.existsSync(root + '/' + data[a].src), 'atlas ships: ' + data[a].src);
+  for (const p of Object.values(data.plates)) check(fs.existsSync(root + '/' + p.src), 'plate ships: ' + p.src);
   check(fs.existsSync(root + '/.nojekyll'), '.nojekyll present');
 }
 // Title
@@ -151,3 +163,4 @@ WL.settings.set({ fx: 'auto' });
 
 if (failures.length) { console.log(failures.length + ' visual check(s) failed'); process.exit(1); }
 console.log('PASS visual smoke: title, 4 stages mid-fight, boss tell, pause, classic, lite' + (out ? ' -> ' + out : ''));
+})();

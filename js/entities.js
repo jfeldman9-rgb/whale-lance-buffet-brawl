@@ -449,9 +449,9 @@
     draw(ctx, camX) {
       const sx = Math.round(this.x - camX), sy = Math.round(this.y);
       if (this.state === 'gone') return;
-      WL.draw.shadow(ctx, sx, sy, 20, 6, this.z);
+      WL.draw.shadow(ctx, sx, sy, 20, 6, this.z, WL.art.has('lance'));
       const blink = this.invuln > 0 && !['down', 'dead', 'fart', 'fartCharge'].includes(this.state) && Math.floor(this.t * 20) % 2 === 0;
-      S.drawLance(ctx, sx, sy - this.z, { pose: this.pose(), t: this.t, facing: this.facing, flash: this.flash > 0, alpha: blink ? 0.45 : 1 });
+      S.drawLance(ctx, sx, sy - this.z, { pose: this.pose(), t: this.t, facing: this.facing, flash: this.flash > 0, alpha: blink ? 0.45 : 1, floorY: sy });
       if (this.state === 'attack' && this.attack) {
         const a = this.attack;
         const u = (this.stateT - (a.windUntil || 0)) / Math.max(0.05, a.dur - (a.windUntil || 0));
@@ -857,9 +857,9 @@
       ctx.strokeStyle = this.elite ? '#ffe14a' : plate;
       ctx.beginPath(); ctx.ellipse(sx, sy + 1, prx, 5.5, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
-      WL.draw.shadow(ctx, sx, sy, this.height * 0.28, this.height * 0.09, this.z);
+      WL.draw.shadow(ctx, sx, sy, this.height * 0.28, this.height * 0.09, this.z, WL.art.has(this.type));
       const alpha = this.dead ? Math.max(0, 1 - (this.stateT - 0.4) * 2) : (this.state === 'spawn' ? this.stateT * 2 : 1);
-      S.drawEnemy(ctx, sx, sy - this.z, { type: this.type, pose: this.pose(), t: this.t, facing: this.facing, flash: this.flash > 0 || (this.dead && Math.floor(this.t * 30) % 2 === 0), alpha, taped: this.state === 'grabbed', stunTint: this.state === 'stunned' });
+      S.drawEnemy(ctx, sx, sy - this.z, { type: this.type, pose: this.pose(), t: this.t, facing: this.facing, flash: this.flash > 0 || (this.dead && Math.floor(this.t * 30) % 2 === 0), alpha, taped: this.state === 'grabbed', stunTint: this.state === 'stunned', floorY: sy });
       if (this.elite) WL.text.draw(ctx, 'ELITE', sx, sy - this.z - this.height - 14, { size: 6, align: 'center', color: '#fc6', stroke: '#000', strokeWidth: 2 });
     }
   }

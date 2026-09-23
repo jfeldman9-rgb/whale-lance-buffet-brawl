@@ -17,6 +17,11 @@ WL.assets = (function () {
     lanceHud: 'assets/lance/lance-hud.png'            // small HUD portrait
   };
 
+  // Painted sprite atlases and background plates (tools/bake_art.py -> js/artdata.js).
+  const art = WL.ARTDATA || {};
+  for (const k of Object.keys(art)) if (k !== 'plates') manifest['art:' + k] = art[k].src;
+  for (const k of Object.keys(art.plates || {})) manifest['plate:' + k] = art.plates[k].src;
+
   let loaded = 0, total = 0, done = false;
 
   function load(onProgress) {
@@ -33,5 +38,5 @@ WL.assets = (function () {
   function get(key) { return images[key] || null; }
   function has(key) { return !!images[key]; }
 
-  return { load, get, has, get progress() { return total ? loaded / total : 0; }, get done() { return done; } };
+  return { load, get, has, _img: k => images[k] || null, get progress() { return total ? loaded / total : 0; }, get done() { return done; } };
 })();
