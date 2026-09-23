@@ -1192,7 +1192,7 @@
       plate: 'op2-captain-calls', kicker: 'THE BRIDGE  ·  0900 HOURS', sting: 'phone', fx: 'alarm',
       cam: [0.5, 0.45, 1.04, 0.64, 0.38, 1.2],
       tags: [{ at: 0.5, ...CAPTAIN_TAG, x: 0.62, y: 0.32, side: -1 }],
-      hits: [{ at: 1.3, shake: 4, text: 'SLAM!', x: 0.33, y: 0.8 }],
+      hits: [{ at: 1.3, shake: 4, text: 'SLAM!', x: 0.46, y: 0.46 }],
       lines: [['captain', 'Get me WHALE LANCE AIR CONDITIONING AND HEATING.'], ['captain', 'I don\'t care what it costs. NOW!']]
     },
     op3: {
@@ -1210,7 +1210,7 @@
       lines: [['narrator', 'On the Lido, the salad bar clocked in. Violently.'], ['lance', 'I fix ducts. I do not fix your diet.']]
     },
     st1Intro: {
-      plate: 'st1-lido-intro', kicker: 'STAGE 1  ·  LIDO DECK  ·  94°F', sting: 'stage', fx: 'heat', temp: [94, 94], via: 'wipe',
+      plate: 'st1-lido-intro', kicker: 'STAGE 1  ·  LIDO DECK', sting: 'stage', fx: 'heat', temp: [94, 94], via: 'wipe',
       cam: [0.3, 0.46, 1.18, 0.5, 0.48, 1.03],
       tags: [{ at: 0.6, name: 'SALAD BAR UNION', sub: 'LOCAL 94. DEMANDS: YOU.', x: 0.35, y: 0.45, side: 1 }],
       lines: [['narrator', 'The salad bar has a union now. Their demand is you.'], ['lance', 'Compressor first. The plate is a bonus.']]
@@ -1222,7 +1222,7 @@
       lines: [['narrator', 'The intake was packed with kale. Kale. In the air handler.'], ['lance', 'That is not a filter. That is a lifestyle.']]
     },
     st2Intro: {
-      plate: 'st2-plant-intro', kicker: 'STAGE 2  ·  DECK 4  ·  THE A/C PLANT  ·  88°F', sting: 'stage', fx: 'steam', temp: [88, 88], via: 'wipe',
+      plate: 'st2-plant-intro', kicker: 'STAGE 2  ·  DECK 4  ·  THE A/C PLANT', sting: 'stage', fx: 'steam', temp: [88, 88], via: 'wipe',
       cam: [0.7, 0.36, 1.22, 0.5, 0.46, 1.03],
       tags: [{ at: 0.6, name: 'CARROT NINJAS', sub: 'ORANGE BELT. ACTUAL BELT.', x: 0.7, y: 0.2, side: -1 }],
       hits: [{ at: 1.6, shake: 3, text: 'SHING!', x: 0.78, y: 0.2 }],
@@ -1234,7 +1234,7 @@
       lines: [['narrator', 'Compressor rewired with duct tape and one unkind word.'], ['lance', 'She\'ll hold till Maui. Maybe Tuesday.']]
     },
     st3Intro: {
-      plate: 'st3-spa-intro', kicker: 'STAGE 3  ·  DECK 12  ·  SPA & JUICE BAR  ·  81°F', sting: 'stage', fx: 'sparkle', temp: [81, 81], via: 'wipe',
+      plate: 'st3-spa-intro', kicker: 'STAGE 3  ·  DECK 12  ·  SPA & JUICE BAR', sting: 'stage', fx: 'sparkle', temp: [81, 81], via: 'wipe',
       cam: [0.66, 0.34, 1.22, 0.5, 0.46, 1.03],
       tags: [{ at: 0.6, name: 'KALE BRUISER', sub: 'SUPERFOOD. SUPER PROBLEM.', x: 0.66, y: 0.2, side: -1 }, { at: 1.4, name: 'FROZEN YOGURT', sub: 'LANCE\'S LEAST FAVORITE CUP.', x: 0.5, y: 0.56, side: 1 }],
       lines: [['narrator', 'The kale has a trainer. The froyo has opinions.'], ['lance', 'I don\'t do green juice. I do green meters.']]

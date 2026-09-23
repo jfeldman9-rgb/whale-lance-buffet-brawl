@@ -370,7 +370,8 @@ WL.cinema = (function () {
         ctx.restore();
       });
     }
-    slamY(b) { return b.slam.y != null ? b.slam.y : b.slam.end ? 186 : 72; }
+    /* The finale card sits in the lower band so the logo lands over the food, not the faces. */
+    slamY(b) { return b.slam.y != null ? b.slam.y : b.slam.end ? 296 : 72; }
     slamVisible(b, t) { return !!b.slam && t >= this.tl.slamAt && (b.slam.end || t <= this.tl.slamAt + 2.6); }
     drawSlam(ctx, b, t) {
       if (!b.slam) return;

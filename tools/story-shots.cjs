@@ -61,6 +61,24 @@ const done = code => { chrome.kill('SIGKILL'); server.kill('SIGKILL'); process.e
   /* Wall-clock time inside the current scene, so both old and new scene classes work. */
   const sceneTime = () => js('return (performance.now() - WL.game.sceneAt) / 1000');
   const waitScene = async secs => { while (await sceneTime() < secs) await sleep(30); };
+  const waitUntil = async (cond, ms) => { for (const end = Date.now() + ms; Date.now() < end && !(await js('return !!(' + cond + ')')); ) await sleep(30); };
+  /* Resample the screencast (variable rate) onto a constant 30 fps clip and start a new one. */
+  const encode = name => {
+    if (!frames.length) return;
+    const dir = fs.mkdtempSync('/tmp/wl-frames-');
+    const t0 = frames[0].t, t1 = frames[frames.length - 1].t, n = Math.floor((t1 - t0) * 30);
+    let j = 0;
+    for (let k = 0; k < n; k++) {
+      const t = t0 + k / 30;
+      while (j + 1 < frames.length && frames[j + 1].t <= t) j++;
+      fs.writeFileSync(path.join(dir, String(k).padStart(5, '0') + '.jpg'), Buffer.from(frames[j].data, 'base64'));
+    }
+    const mp4 = path.join(out, name + '.mp4');
+    const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '30', '-i', path.join(dir, '%05d.jpg'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', mp4]);
+    console.log(r.status === 0 ? `video ${mp4} (${frames.length} frames over ${(t1 - t0).toFixed(1)} s)` : 'ffmpeg failed: ' + r.stderr);
+    fs.rmSync(dir, { recursive: true, force: true });
+    frames.length = 0;
+  };
 
   if (BEATS) {
     // One shot per beat in WL.STORY, each in its own reel.
@@ -75,14 +93,18 @@ const done = code => { chrome.kill('SIGKILL'); server.kill('SIGKILL'); process.e
     done(0);
     return;
   }
+  // Headless Chrome only paints while the screencast runs, so it stays on for the whole run
+  // and each clip starts from a cleared frame buffer.
   if (VIDEO) await send('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 });
   await js('WL.game.startNewGame(true)');
   await settle();
+  frames.length = 0;
   await waitScene(AT);
   await shot('opening-1');
   if (VIDEO) {
-    // Let beat 1 play out and carry into beat 2 on its own.
-    await sleep(7000);
+    // Let beat 1 play out and carry into beat 2 through the reel's own transition.
+    await waitUntil('WL.game.scene.i >= 1 && WL.game.scene.t > 4', 20000);
+    encode('story-live-feel-opening');
   }
   if (ALL) {
     // Every remaining beat of the opening reel, at the same time into the beat.
@@ -94,11 +116,14 @@ const done = code => { chrome.kill('SIGKILL'); server.kill('SIGKILL'); process.e
   }
   await js('WL.game.levelComplete(0, { score: 48250, lives: 3, fart: 40 })');
   await sleep(250); await settle();
+  frames.length = 0;
   await waitScene(AT);
   await shot('storybeat-lido-outro');
   if (VIDEO) {
-    await sleep(4500);
+    // Stage clear: the repair log carries into the next deck's intro.
+    await waitUntil('WL.game.scene.i >= 1 && WL.game.scene.t > 4', 20000);
     await send('Page.stopScreencast');
+    encode('story-live-feel-storybeat');
   }
   await js('WL.game.showEnding(98765)');
   await sleep(250); await settle();
@@ -107,20 +132,6 @@ const done = code => { chrome.kill('SIGKILL'); server.kill('SIGKILL'); process.e
   const errs = await js('return window.__errors');
   if (errs.length) console.log('page errors: ' + errs.join(' | '));
 
-  if (VIDEO && frames.length) {
-    const dir = fs.mkdtempSync('/tmp/wl-frames-');
-    // Resample the screencast (variable rate) onto a constant 30 fps timeline.
-    const t0 = frames[0].t, t1 = frames[frames.length - 1].t, n = Math.floor((t1 - t0) * 30);
-    let j = 0;
-    for (let k = 0; k < n; k++) {
-      const t = t0 + k / 30;
-      while (j + 1 < frames.length && frames[j + 1].t <= t) j++;
-      fs.writeFileSync(path.join(dir, String(k).padStart(5, '0') + '.jpg'), Buffer.from(frames[j].data, 'base64'));
-    }
-    const mp4 = path.join(out, 'story-live-feel.mp4');
-    const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '30', '-i', path.join(dir, '%05d.jpg'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', mp4]);
-    console.log(r.status === 0 ? `video ${mp4} (${frames.length} frames over ${(t1 - t0).toFixed(1)} s)` : 'ffmpeg failed: ' + r.stderr);
-  }
   ws.close();
   done(errs.length ? 1 : 0);
 })().catch(e => { console.error(e); done(1); });
