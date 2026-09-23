@@ -12,7 +12,7 @@ function boot(){
     localStorage:{getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,v),removeItem:k=>m.delete(k)},location:{hash:''},requestAnimationFrame(){},
     document:{getElementById:()=>canvas,createElement:()=>createCanvas(1,1),addEventListener(){},fonts:{load:()=>Promise.resolve()}},Image:class{set src(s){this.onerror&&this.onerror()}}};
   ctx.window=ctx;vm.createContext(ctx);
-  const files=fs.existsSync(root+'/js/settings.js')?['util','settings','assets','input','audio','voice','sprites','entities','levels','options','scenes','main']:['util','assets','input','audio','voice','sprites','entities','levels','scenes','main'];
+  const files=fs.existsSync(root+'/js/art.js')?[...fs.readFileSync(root+'/index.html','utf8').matchAll(/<script src="js\/(\w+)\.js/g)].map(m=>m[1]):fs.existsSync(root+'/js/settings.js')?['util','settings','assets','input','audio','voice','sprites','entities','levels','options','scenes','main']:['util','assets','input','audio','voice','sprites','entities','levels','scenes','main'];
   for(const f of files)vm.runInContext(fs.readFileSync(root+'/js/'+f+'.js','utf8'),ctx,{filename:f});
   return ctx.WL;
 }

@@ -1,0 +1,220 @@
+// Visual smoke test + screenshot capture for the graphics pass.
+// Usage: node tools/capture-gfx.cjs [outDir]   (needs @napi-rs/canvas, like verify-hd.cjs)
+// Renders the title, a staged mid-fight on every stage, the boss, Classic mode and
+// the pause menu at 1920x1080, then checks a few picture properties that the art
+// direction depends on (bright sky, see-through control plates, no opaque HUD bar).
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const { createCanvas, Image, GlobalFonts } = require('@napi-rs/canvas');
+const root = path.resolve(__dirname, '..');
+const out = process.argv[2] || null;
+if (out) fs.mkdirSync(out, { recursive: true });
+GlobalFonts.registerFromPath(root + '/assets/fonts/press-start-2p.ttf', 'Press Start 2P');
+
+function boot(width, height, dpr, coarse) {
+  const listeners = {}, clisteners = {}, dl = {}, canvas = createCanvas(640, 360);
+  canvas.style = {}; canvas.classList = { toggle() {} };
+  canvas.addEventListener = (k, fn) => { if (!clisteners[k]) clisteners[k] = fn; };
+  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: parseFloat(canvas.style.width), height: parseFloat(canvas.style.height) });
+  const m = new Map();
+  const context = { console, Math, Promise, performance: { now: () => 0 }, setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {}, innerWidth: width, innerHeight: height, devicePixelRatio: dpr,
+    matchMedia: q => ({ matches: q.includes('coarse') ? coarse : q.includes('fine') ? !coarse : false, addEventListener() {}, removeEventListener() {} }),
+    addEventListener: (k, fn) => (listeners[k] ??= []).push(fn), navigator: { maxTouchPoints: coarse ? 5 : 0, getGamepads: () => [] },
+    localStorage: { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) }, location: { hash: '' }, requestAnimationFrame: fn => context.frame = fn,
+    document: { getElementById: () => canvas, createElement: () => createCanvas(1, 1), addEventListener: (k, fn) => (dl[k] ??= []).push(fn), fonts: { load: () => Promise.resolve() } },
+    // Real decoded images, so the painted atlases and plates are part of the picture.
+    Image: class extends Image { set src(src) { try { super.src = fs.readFileSync(root + '/' + src.split('?')[0]); this.onload?.(); } catch { this.onerror?.(); } } get src() { return super.src; } }
+  };
+  context.window = context; vm.createContext(context);
+  for (const f of [...fs.readFileSync(root + '/index.html', 'utf8').matchAll(/<script src="js\/(\w+)\.js/g)].map(m => m[1])) vm.runInContext(fs.readFileSync(root + '/js/' + f + '.js', 'utf8'), context, { filename: f + '.js' });
+  // WL_NO_ART=1 renders the procedural fallback instead of the painted art.
+  if (process.env.WL_NO_ART) context.WL.assets.get = () => null;
+  else context.WL.assets.get = k => (k.startsWith('cut') ? null : context.WL.assets._img(k));
+  return { context, canvas, clisteners, WL: context.WL };
+}
+
+(async () => {
+const env = boot(960, 540, 2, false);
+// Image decoding in @napi-rs/canvas finishes off the main thread.
+await new Promise(r => setTimeout(r, 400));
+const { WL, canvas } = env;
+const context0 = env.context;
+const ctx = canvas.getContext('2d');
+const save = name => { if (out) fs.writeFileSync(path.join(out, name + '.png'), canvas.toBuffer('image/png')); };
+const frame = draw => { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height); const rs = WL.display.renderScale; ctx.setTransform(rs, 0, 0, rs, 0, 0); draw(); };
+/** Average RGB over a world-space rect. */
+function avg(x, y, w, h) {
+  const rs = WL.display.renderScale;
+  const d = ctx.getImageData(Math.round(x * rs), Math.round(y * rs), Math.max(1, Math.round(w * rs)), Math.max(1, Math.round(h * rs))).data;
+  let r = 0, g = 0, b = 0; const n = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+  return [r / n, g / n, b / n];
+}
+const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+const failures = [];
+const check = (ok, msg) => { if (!ok) { failures.push(msg); console.log('FAIL ' + msg); } };
+
+/** A readable mid-fight moment: Lance mid-smash into a goon, a crowd around, debris in the air, a hot combo. */
+function stageFight(i, opts = {}) {
+  const s = new WL.scenes.Play(WL.game, i, { score: 48250, lives: 3, fart: 62 });
+  s.enter(); s.phase = 'play'; s.bannerT = 0; s.cards = []; s.tutorialT = 0; WL.game.scene = s;
+  const p = s.player;
+  s.camX = opts.camX != null ? opts.camX : 180;
+  p.x = s.camX + 250; p.y = 292; p.facing = 1;
+  s.objects = s.objects.filter(o => o.x > s.camX - 40 && o.x < s.camX + 680);
+  const types = opts.types || ['broccoli', 'sprout', 'carrot', 'sprout'];
+  const spots = [[p.x + 58, p.y + 2], [p.x - 78, p.y - 36], [p.x + 130, p.y - 58], [p.x - 150, p.y + 22], [p.x + 210, p.y + 30]];
+  types.forEach((t, k) => { const e = s.spawnEnemy(t, spots[k][0], spots[k][1], {}); e.setState('approach'); e.facing = e.x > p.x ? -1 : 1; e.t = k * 0.7; });
+  s.cards = [];
+  const target = s.enemies[0];
+  if (target) { target.setState('hurt'); target.flash = 0; }
+  p.setState('attack'); p.attack = WL.entities.ATTACKS.smash; p.stateT = p.attack.windUntil + 0.02; p.t = 1.3;
+  p.comboCount = opts.combo || 12; p.comboDisplayT = 2; p.comboPop = 0.4; p.lastTool = 'smash'; p.lastToolT = 1;
+  p.hasToolbox = true;
+  for (let k = 0; k < 3; k++) s.fx.update(0);
+  const hx = p.x + 46, hy = p.y - 50;
+  s.fx.spark(hx, hy, true); s.fx.impactRing(hx, hy, true);
+  s.fx.foodDebris(hx, hy, target ? target.type : 'broccoli'); s.fx.burst(hx, hy, target ? target.type : 'broccoli');
+  s.fx.debris(p.x + 150, p.y - 30, 'plates');
+  for (let k = 0; k < 9; k++) s.fx.update(1 / 60);
+  s.fx.spark(hx + 4, hy - 6, true);
+  for (const e of s.enemies) e.flash = 0;
+  s.flashT = 0; s.shakeX = s.shakeY = 0; s.punchX = s.punchY = 0; s.lightingPulse = 0.25;
+  return s;
+}
+
+const shots = [];
+// Pages ships as-is: one cache-bust stamp on every asset, and Jekyll stays off.
+{
+  const html = fs.readFileSync(root + '/index.html', 'utf8');
+  const stamps = new Set([...html.matchAll(/\?v=([\w-]+)/g)].map(m => m[1]));
+  const scripts = [...html.matchAll(/<script src="js\/(\w+)\.js\?v=/g)].map(m => m[1]);
+  check(stamps.size === 1, 'one cache-bust stamp across css + scripts: ' + [...stamps].join(', '));
+  const tags = [...html.matchAll(/<script src="js\//g)].length;
+  check(scripts.length === tags && scripts.includes('art') && scripts.includes('artdata') && /css\/style\.css\?v=/.test(html), 'every script and the stylesheet are versioned');
+  check(stamps.has('20260923-cut1'), 'cache-bust stamp is 20260923-cut1');
+  const data = context0.WL.ARTDATA;
+  for (const a of ['lance', 'broccoli', 'carrot', 'sprout', 'celery', 'props']) check(fs.existsSync(root + '/' + data[a].src), 'atlas ships: ' + data[a].src);
+  for (const p of Object.values(data.plates)) check(fs.existsSync(root + '/' + p.src), 'plate ships: ' + p.src);
+  check(fs.existsSync(root + '/.nojekyll'), '.nojekyll present');
+}
+// Title
+const title = new WL.scenes.Title(WL.game); title.t = 1.2;
+frame(() => title.draw(ctx)); save('01-title'); shots.push('01-title');
+{
+  // Title keeps the deck scene bright behind the logo.
+  const sky = avg(0, 0, 640, 30); check(lum(sky) > 90, 'title sky is daylight, not a dark plate: ' + lum(sky).toFixed(0));
+}
+// The concept's moment: the toolbox smash into KALE RAGE, CRUNCH CREW and the sprouts charging in from the left.
+{
+  const s = new WL.scenes.Play(WL.game, 0, { score: 48250, lives: 3, fart: 62 });
+  s.enter(); s.phase = 'play'; s.bannerT = 0; s.cards = []; s.tutorialT = 0; WL.game.scene = s;
+  s.camX = 40; s.objects = []; s.pickups = [];
+  const p = s.player; p.x = s.camX + 292; p.y = 300; p.facing = 1;
+  const put = (type, dx, dy, st, face, t) => { const e = s.spawnEnemy(type, p.x + dx, p.y + dy, {}); e.setState(st); e.facing = face; e.t = t; e.flash = 0; return e; };
+  const kale = put('broccoli', 62, -4, 'hurt', -1, 0);
+  put('carrot', -178, -40, 'approach', 1, 0.3); s.enemies[1].vx = 60;
+  put('sprout', -236, 8, 'approach', 1, 0.1); s.enemies[2].vx = 50;
+  put('sprout', -110, -58, 'approach', 1, 0.55); s.enemies[3].vx = 50;
+  put('sprout', 120, 40, 'approach', -1, 0.2); s.enemies[4].vx = -50;
+  p.setState('throw'); p.stateT = 0.02; p.t = 1.3; p.hasToolbox = true;
+  p.comboCount = 12; p.comboDisplayT = 2; p.comboPop = 0; p.lastToolT = 0;
+  const hx = p.x + 50, hy = p.y - 78;
+  s.fx.spark(hx + 8, hy, false); s.fx.impactRing(hx, hy + 30, true);
+  s.fx.foodDebris(hx, hy, 'broccoli', kale.y, true); s.fx.burst(hx + 6, hy + 10, 'broccoli', kale.y); s.fx.debris(hx + 30, hy + 40, 'plates', kale.y + 10);
+  for (let k = 0; k < 7; k++) s.fx.update(1 / 60);
+  s.fx.spark(hx + 8, hy + 2, false);
+  s.fx.update(0.05);
+  s.flashT = 0; s.shakeX = s.shakeY = 0; s.punchX = s.punchY = 0; s.lightingPulse = 0.2;
+  frame(() => s.draw(ctx)); save('00-concept-moment'); shots.push('00-concept-moment');
+}
+// Lido deck mid-fight
+let s = stageFight(0);
+frame(() => s.draw(ctx)); save('02-lido-midfight'); shots.push('02-lido-midfight');
+{
+  // Share of clear daylight-blue pixels in the sky band (clouds and Diamond Head sit in it too).
+  const rsx = WL.display.renderScale, band = ctx.getImageData(0, Math.round(20 * rsx), canvas.width, Math.round(80 * rsx)).data;
+  let blue = 0;
+  for (let i = 0; i < band.length; i += 4) if (band[i + 2] > 170 && band[i + 2] > band[i] + 40 && lum([band[i], band[i + 1], band[i + 2]]) > 110) blue++;
+  check(blue / (band.length / 4) > 0.1, 'lido sky is bright blue: ' + (100 * blue / (band.length / 4)).toFixed(0) + '% blue sky');
+  // No opaque full-width bar across the top: sky shows between HUD pieces.
+  const gap = avg(238, 30, 6, 8);
+  check(lum(avg(432, 4, 14, 5)) > 70, 'sky shows between the logo and the tracker');
+  check(lum(gap) > 70, 'top HUD is not an opaque plate: ' + lum(gap).toFixed(0));
+  const deck = avg(0, 300, 640, 50);
+  check(deck[0] > deck[2] + 25, 'deck reads as warm wood: ' + deck.map(v => v | 0));
+}
+s = stageFight(0, { camX: 1180, types: ['broccoli', 'celery', 'sprout', 'broccoli', 'sprout'], combo: 7 });
+frame(() => s.draw(ctx)); save('03-lido-crowd'); shots.push('03-lido-crowd');
+s = stageFight(1, { camX: 900, types: ['carrot', 'spinach', 'carrot', 'broccoli'] });
+frame(() => s.draw(ctx)); save('04-acplant'); shots.push('04-acplant');
+s = stageFight(2, { camX: 700, types: ['kale', 'froyo', 'celery', 'sprout'] });
+frame(() => s.draw(ctx)); save('05-juicebar'); shots.push('05-juicebar');
+// Boss
+s = stageFight(3, { camX: 1260, types: ['froyo'] });
+s.spawnBoss(); s.bannerT = 0; const b = s.boss; b.x = s.player.x + 150; b.y = 280; b.state = 'approach'; b.phase = 2; b.hp = b.maxHp * 0.55; b.armor = 0;
+b.startTell('slamWind'); b.stateT = b.tellDur * 0.6;
+frame(() => s.draw(ctx)); save('06-boss'); shots.push('06-boss');
+// Sticky chrome is see-through: the same chrome over two different backdrops must differ inside the plates.
+{
+  const probe = color => { frame(() => { ctx.fillStyle = color; ctx.fillRect(0, 0, 640, 360); WL.input.drawTouch(ctx, { always: true, fartReady: false, hasToolbox: false }); }); return [avg(503, 290, 4, 4), avg(40, 245, 6, 6), avg(440, 222, 4, 4)]; };
+  const red = probe('#ff0000'), blue = probe('#0000ff');
+  for (let k = 0; k < 3; k++) check(red[k][0] - blue[k][0] > 60 && blue[k][2] - red[k][2] > 60, 'control plate ' + k + ' stays see-through');
+  // PICK UP still shows when Lance has no toolbox.
+  const drawn = []; const orig = WL.text.draw; WL.text.draw = (c, str, ...r) => { drawn.push(str); return orig(c, str, ...r); };
+  WL.input.drawTouch(ctx, { always: true, fartReady: false, hasToolbox: false }); WL.text.draw = orig;
+  check(drawn.includes('PICK UP'), 'BOX badge reads PICK UP without a toolbox');
+}
+// Pause menu over the fight
+s = stageFight(0); s.paused = true; s.pauseSel = 4;
+frame(() => s.draw(ctx)); save('07-pause'); shots.push('07-pause');
+// Large HUD + colorblind-safe health, low HP
+WL.settings.set({ bigHud: true, colorblind: true });
+s = stageFight(0, { camX: 600 }); s.player.hp = 22; s.playerGhostHp = 40;
+frame(() => s.draw(ctx)); save('10-large-hud-colorblind'); shots.push('10-large-hud-colorblind');
+WL.settings.set({ bigHud: false, colorblind: false });
+// Classic 640x360
+WL.display.setMode('classic');
+assert.equal(canvas.width, 640); assert.equal(canvas.style.imageRendering, 'pixelated');
+s = stageFight(0);
+frame(() => s.draw(ctx)); save('08-classic-640x360'); shots.push('08-classic-640x360');
+WL.display.setMode('auto');
+// Lite effects still render the whole picture.
+WL.settings.set({ fx: 'lite' });
+s = stageFight(0);
+frame(() => s.draw(ctx)); save('09-lite'); shots.push('09-lite');
+WL.settings.set({ fx: 'auto' });
+
+// Story reels with the painted plates: opening card 1, a between-stage beat, an ending beat, Classic.
+{
+  await WL.assets.ready(['story']);
+  await new Promise(r => setTimeout(r, 200));
+  const idle = { pressed: {}, axis: () => ({ x: 0, y: 0 }) };
+  const at = (beats, secs) => { const r = new WL.scenes.StoryBeat(WL.game, { beats }); r.enter(); r.waiting = false; for (let t = 0; t < secs; t += 1 / 30) r.update(1 / 30, idle); r.shake = 0; r.flash = 0; return r; };
+  const storyShot = (name, beats, secs) => {
+    const r = at(beats, secs);
+    frame(() => r.draw(ctx)); save(name); shots.push(name);
+    return r;
+  };
+  for (const n of WL.assets.STORY) check(!!WL.assets.get('story:' + n), 'story plate decodes: ' + n);
+  storyShot('11-story-opening-1', [WL.STORY.op1], 2.6);
+  check(lum(avg(0, 0, 640, 18)) < 8 && lum(avg(0, 344, 640, 14)) < 20, 'letterbox bars frame the card');
+  const plate = avg(40, 60, 560, 200);
+  check(lum(plate) > 70 && plate[0] > plate[2], 'opening card 1 is the sunlit painted plate, not the drawn fallback: ' + plate.map(v => v | 0));
+  check(lum(avg(150, 318, 340, 20)) < 95, 'caption strip is dark enough to read over the plate');
+  storyShot('12-story-storybeat-lido-outro', [WL.STORY.st1Outro], 3.0);
+  check(lum(avg(40, 60, 560, 200)) > 60, 'repair-log beat shows its painted plate');
+  storyShot('13-story-captain', [WL.STORY.op2], 1.6);
+  storyShot('14-story-ending-1', [WL.STORY.end1], 2.4);
+  storyShot('15-story-ending-3', [WL.STORY.end3], 11.5);
+  WL.display.setMode('classic');
+  storyShot('16-story-classic', [WL.STORY.op3], 2.0);
+  check(canvas.width === 640, 'Classic story renders at 640x360');
+  WL.display.setMode('auto');
+}
+
+if (failures.length) { console.log(failures.length + ' visual check(s) failed'); process.exit(1); }
+console.log('PASS visual smoke: title, 4 stages mid-fight, boss tell, pause, classic, lite, story reels' + (out ? ' -> ' + out : ''));
+})();

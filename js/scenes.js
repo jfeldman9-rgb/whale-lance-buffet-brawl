@@ -1,5 +1,5 @@
-/* Scenes: Title, Cutscene (opening panels), StoryBeat (between stages),
-   Play (the beat-em-up), GameOver, Ending/Victory. */
+/* Scenes: Title, Play (the beat-em-up), GameOver, Ending/Victory.
+   Cutscene and StoryBeat come from js/cinema.js. */
 'use strict';
 
 (function () {
@@ -25,36 +25,191 @@
     if (WL.settings.data.colorblind) return late ? '#d55e00' : '#f0e442';
     return late ? '#ff2438' : '#ff9a1f';
   }
-  const confirmWord = () => (WL.input.touchEnabled ? 'TAP' : 'ENTER');
 
-  const hudHead = { key: '', canvas: null };
-  function drawHudHead(ctx, mood) {
-    const rs = (WL.display && WL.display.renderScale) || 1;
-    const key = mood + '@' + rs.toFixed(3);
-    if (hudHead.key !== key || !hudHead.canvas) {
-      const w = 28, h = 32;
-      const c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(w * rs));
-      c.height = Math.max(1, Math.round(h * rs));
-      const g = c.getContext('2d');
-      g.setTransform(c.width / w, 0, 0, c.height / h, 0, 0);
-      g.imageSmoothingEnabled = true;
+  /* ---- HUD art ---- */
+  function drawHudPortrait(ctx, cx, cy, mood) {
+    const painted = WL.art.plate('lance-portrait');
+    const e = painted ? WL.gfx.layer('hud-portrait-painted-' + mood, 40, 40, undefined, g => {
+      g.save();
+      g.beginPath(); g.arc(20, 20, 18.6, 0, Math.PI * 2); g.clip();
       g.imageSmoothingQuality = 'high';
-      g.fillStyle = '#3a78c8';
-      g.fillRect(0, 0, w, h);
-      S.lanceHead(g, 14, 18, 30, { mood });
-      hudHead.key = key; hudHead.canvas = c;
-    }
+      g.drawImage(painted, -2, -1, 44, 44);
+      if (mood === 'hurt') { g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(255,40,30,0.28)'; g.fillRect(0, 0, 40, 40); }
+      // glass dome: a soft sheen top-left, a dark lip at the bottom
+      g.globalCompositeOperation = 'source-over';
+      const sh = g.createLinearGradient(0, 2, 0, 40);
+      sh.addColorStop(0, 'rgba(255,255,255,0.28)'); sh.addColorStop(0.35, 'rgba(255,255,255,0)'); sh.addColorStop(0.85, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,0.35)');
+      g.fillStyle = sh; g.fillRect(0, 0, 40, 40);
+      g.restore();
+    }) : WL.gfx.layer('hud-portrait-' + mood, 40, 40, undefined, g => {
+      S.setLight(1);
+      g.save();
+      g.beginPath(); g.arc(20, 20, 18, 0, Math.PI * 2); g.clip();
+      const bg = g.createRadialGradient(24, 8, 2, 20, 20, 26);
+      bg.addColorStop(0, '#d8f3ff'); bg.addColorStop(0.5, '#6cc0f0'); bg.addColorStop(1, '#1f5fb0');
+      g.fillStyle = bg; g.fillRect(0, 0, 40, 40);
+      g.fillStyle = '#4f8a44'; g.beginPath(); g.moveTo(0, 30); g.lineTo(10, 25); g.lineTo(18, 28); g.lineTo(40, 31); g.lineTo(40, 40); g.lineTo(0, 40); g.closePath(); g.fill();
+      // shoulders in the red shirt, lei across the collar
+      g.fillStyle = '#c8322a'; g.beginPath(); g.moveTo(3, 40); g.quadraticCurveTo(6, 31, 20, 31); g.quadraticCurveTo(34, 31, 37, 40); g.closePath(); g.fill();
+      S.lanceHead(g, 20, 19, 27, { mood });
+      for (let i = 0; i < 7; i++) { const a = Math.PI * (0.1 + i * 0.13); S.hibiscus(g, 20 - Math.cos(a) * 11, 32 + Math.sin(a) * 4, 2.6, i % 2 ? '#f7f2ff' : '#9a4fd0', '#ffe070', i); }
+      g.restore();
+    });
     const smooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = WL.display.mode !== 'classic';
-    ctx.drawImage(hudHead.canvas, 7, 6, 28, 32);
+    WL.gfx.blit(ctx, e, cx - 20, cy - 20);
     ctx.imageSmoothingEnabled = smooth;
+  }
+  function drawBezel(ctx, cx, cy, r, alarm) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, Math.PI * 2);
+    ctx.strokeStyle = '#140c02'; ctx.lineWidth = 5.5; ctx.stroke();
+    const gg = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+    gg.addColorStop(0, '#fff4b8'); gg.addColorStop(0.4, '#e2b23a'); gg.addColorStop(0.7, '#8a5c10'); gg.addColorStop(1, '#d8a834');
+    ctx.strokeStyle = gg; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, r + 0.2, Math.PI * 1.1, Math.PI * 1.6);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1; ctx.stroke();
+    if (alarm) { ctx.beginPath(); ctx.arc(cx, cy, r + 4.5, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,40,40,0.85)'; ctx.lineWidth = 2; ctx.stroke(); }
+    ctx.restore();
+  }
+  function hardHat(ctx, x, y) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x, y, 5, Math.PI, 0); ctx.closePath();
+    const hg = ctx.createLinearGradient(0, y - 5, 0, y);
+    hg.addColorStop(0, '#fff3a0'); hg.addColorStop(0.5, '#ffc81a'); hg.addColorStop(1, '#c88a00');
+    ctx.fillStyle = hg; ctx.fill(); ctx.strokeStyle = '#1a1000'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(x, y + 0.4, 7, 1.8, 0, 0, Math.PI * 2); ctx.fillStyle = '#e8a800'; ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,70,0,0.8)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y - 5); ctx.lineTo(x, y - 0.5); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(x - 3, y - 3.6, 1.6, 1);
+    ctx.restore();
+  }
+  /* Title logo, cached per scale: extruded WHALE LANCE: over BUFFET BRAWL, with hibiscus. */
+  function paintLogo(g) {
+    const cx = 190;
+    const layer = (str, y, size, grad, depth) => {
+      for (let k = depth; k >= 1; k--) T.draw(g, str, cx + k * 0.35, y + k, { size, align: 'center', color: '#0b1d4a', stroke: '#0b1d4a', strokeWidth: size * 0.36, shadow: false });
+      T.draw(g, str, cx, y, { size, align: 'center', color: '#0b1d4a', stroke: '#0b1d4a', strokeWidth: size * 0.4, shadow: false });
+      T.draw(g, str, cx, y, { size, align: 'center', gradient: grad, stroke: '#ffffff', strokeWidth: size * 0.18, shadow: false });
+      g.save(); g.beginPath(); g.rect(0, y, 380, size * 0.38); g.clip();
+      T.draw(g, str, cx, y, { size, align: 'center', color: 'rgba(255,255,255,0.32)', shadow: false });
+      g.restore();
+    };
+    const flower = (x, y, r, rot) => {
+      g.save(); g.translate(x, y); g.rotate(rot);
+      g.fillStyle = '#2f7a2c';
+      g.beginPath(); g.ellipse(-r * 0.9, r * 0.5, r * 0.8, r * 0.32, -0.5, 0, 7); g.fill();
+      g.beginPath(); g.ellipse(r * 0.8, r * 0.7, r * 0.7, r * 0.3, 0.6, 0, 7); g.fill();
+      for (let i = 0; i < 5; i++) {
+        g.rotate(Math.PI * 0.4);
+        const pg = g.createRadialGradient(0, -r * 0.2, 1, 0, -r * 0.5, r * 0.7);
+        pg.addColorStop(0, '#ffe0e8'); pg.addColorStop(0.35, '#ff4a6a'); pg.addColorStop(1, '#b8102a');
+        g.fillStyle = pg; g.beginPath(); g.ellipse(0, -r * 0.52, r * 0.46, r * 0.6, 0, 0, 7); g.fill();
+        g.strokeStyle = 'rgba(110,0,20,0.6)'; g.lineWidth = 0.8; g.stroke();
+      }
+      g.fillStyle = '#7a0018'; g.beginPath(); g.arc(0, 0, r * 0.2, 0, 7); g.fill();
+      g.strokeStyle = '#ffd24a'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(0, 0); g.lineTo(r * 0.5, -r * 0.55); g.stroke();
+      g.fillStyle = '#ffe070'; g.beginPath(); g.arc(r * 0.52, -r * 0.58, 1.8, 0, 7); g.fill();
+      g.restore();
+    };
+    layer('WHALE LANCE:', 6, 24, ['#f2fbff', '#6cc4ff', '#1a5ad8'], 4);
+    layer('BUFFET BRAWL', 40, 30, ['#fff6b0', '#ffc21a', '#ff5a00', '#d0200a'], 5);
+    flower(30, 16, 15, 0.3);
+    flower(352, 14, 13, -0.4);
+  }
+  /** Logo by width (world px); returns its height. The painted logo is used when it loaded. */
+  function drawLogo(ctx, cx, y, width) {
+    const P = WL.ARTDATA && WL.ARTDATA.plates && WL.ARTDATA.plates.logo;
+    const img = WL.art.plate('logo');
+    if (img && P) {
+      const h = Math.round(width * P.h / P.w);
+      const e = WL.gfx.layer('logo-painted-' + width, width, h, undefined, g => { g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, width, h); });
+      WL.gfx.blit(ctx, e, cx - e.w / 2, y);
+      return h;
+    }
+    const scale = width / 380;
+    const e = WL.gfx.layer('logo-' + scale, 380 * scale, 88 * scale, undefined, g => { g.scale(scale, scale); paintLogo(g); });
+    WL.gfx.blit(ctx, e, cx - e.w / 2, y);
+    return 88 * scale;
+  }
+  /* "12 HIT COMBO": slanted fire lettering with flames licking up behind the number. */
+  /* Painted fire numerals (props atlas d0..d9, hit, combo), slanted like the concept. */
+  function drawComboPainted(ctx, n, t) {
+    const str = String(n);
+    const h = n >= 10 ? 32 : 29, sc = h / 24, ws = 1.05;
+    const F = WL.art.frame.bind(null, 'props'), k = WL.ARTDATA.props.k;
+    const dw = [...str].map(c => F('d' + c)[2] * k * sc * 0.9);
+    const hw = F('hit')[2] * k * ws, cw = F('combo')[2] * k * ws;
+    const total = dw.reduce((a, b) => a + b, 0);
+    let x = -total / 2;
+    ctx.save();
+    if (!WL.perf.lite) {
+      // flames licking up behind the number
+      ctx.globalCompositeOperation = 'lighter';
+      const heat = Math.min(1, 0.45 + n / 20), nw = total;
+      for (let i = 0; i < 8; i++) {
+        const fx = x + 4 + (i / 7) * (nw - 8);
+        const fh = (14 + (i % 3) * 6 + Math.sin(t * 13 + i * 1.7) * 5) * heat;
+        const fg = ctx.createLinearGradient(0, h + 2, 0, h - fh - h * 0.7);
+        fg.addColorStop(0, 'rgba(255,240,160,0.75)'); fg.addColorStop(0.4, 'rgba(255,130,20,0.5)'); fg.addColorStop(1, 'rgba(220,30,0,0)');
+        ctx.fillStyle = fg;
+        const wv = Math.sin(t * 9 + i) * 3;
+        ctx.beginPath(); ctx.moveTo(fx - 7, h + 2); ctx.quadraticCurveTo(fx - 5 + wv, h - fh * 0.6, fx + wv * 1.5, h - fh - h * 0.7); ctx.quadraticCurveTo(fx + 5 + wv, h - fh * 0.5, fx + 7, h + 2); ctx.closePath(); ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      S.drawGlow(ctx, x + nw / 2, h * 0.5, h * 1.6, 0.4);
+    }
+    for (let i = 0; i < str.length; i++) {
+      WL.art.draw(ctx, 'props', 'd' + str[i], x + dw[i] / 2, h, { sx: sc, sy: sc });
+      x += dw[i];
+    }
+    // HIT COMBO on one slanted line under the number
+    const wy = h + 13, wx = -(hw + 3 + cw) / 2 + 4;
+    WL.art.draw(ctx, 'props', 'hit', wx + hw / 2, wy, { sx: ws, sy: ws, rot: -0.06 });
+    WL.art.draw(ctx, 'props', 'combo', wx + hw + 3 + cw / 2, wy - 1, { sx: ws, sy: ws, rot: -0.06 });
+    ctx.restore();
+  }
+  function drawCombo(ctx, n, t) {
+    if (WL.art.has('props') && WL.art.frame('props', 'd0')) { drawComboPainted(ctx, n, t); return; }
+    const str = String(n);
+    const sz = n >= 10 ? 26 : 22;
+    const nw = T.width(ctx, str, sz);
+    const total = nw + 6 + 44;
+    const x0 = -total / 2;
+    ctx.save();
+    ctx.transform(1, 0, -0.2, 1, sz * 0.2, 0);
+    if (!WL.perf.lite) {
+      ctx.globalCompositeOperation = 'lighter';
+      const heat = Math.min(1, 0.45 + n / 20);
+      for (let i = 0; i < 7; i++) {
+        const fx = x0 + 4 + (i / 6) * (nw - 8);
+        const fh = (12 + (i % 3) * 5 + Math.sin(t * 13 + i * 1.7) * 4) * heat * (sz / 22);
+        const by = sz + 2;
+        const fg = ctx.createLinearGradient(0, by, 0, by - fh - sz * 0.6);
+        fg.addColorStop(0, 'rgba(255,240,160,0.8)'); fg.addColorStop(0.4, 'rgba(255,130,20,0.55)'); fg.addColorStop(1, 'rgba(220,30,0,0)');
+        ctx.fillStyle = fg;
+        const wv = Math.sin(t * 9 + i) * 3;
+        ctx.beginPath(); ctx.moveTo(fx - 6, by); ctx.quadraticCurveTo(fx - 5 + wv, by - fh * 0.6, fx + wv * 1.5, by - fh - sz * 0.6); ctx.quadraticCurveTo(fx + 5 + wv, by - fh * 0.5, fx + 6, by); ctx.closePath(); ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      S.drawGlow(ctx, x0 + nw / 2, sz * 0.55, sz * 1.5, 0.45);
+    }
+    for (let k = 3; k >= 1; k--) T.draw(ctx, str, x0 + k * 0.4, k, { size: sz, color: '#3a0800', stroke: '#3a0800', strokeWidth: 7, shadow: false });
+    T.draw(ctx, str, x0, 0, { size: sz, color: '#160300', stroke: '#160300', strokeWidth: 8, shadow: false });
+    T.draw(ctx, str, x0, 0, { size: sz, gradient: ['#fffde8', '#ffe03a', '#ff8a10', '#e02400'], stroke: '#fff1b0', strokeWidth: 2.4, shadow: false });
+    const wx = x0 + nw + 6;
+    T.draw(ctx, 'HIT', wx, 3, { size: 10, gradient: ['#ffffff', '#ffe14a', '#ff9a1a'], stroke: '#160300', strokeWidth: 4, shadow: false });
+    T.draw(ctx, 'COMBO', wx, 15, { size: 8, gradient: ['#fff6c0', '#ffb020', '#ff5a00'], stroke: '#160300', strokeWidth: 4, shadow: false });
+    ctx.restore();
   }
 
   /* ================================================================== */
   /* Title                                                              */
   /* ================================================================== */
   const TITLE_Y0 = 198, TITLE_STEP = 18;
+  // The painted key art keeps Lance centre stage, so the menu moves to a glass plate on the left.
+  const titleArt = () => !!WL.art.plate('title-art');
+  const menuX = () => (titleArt() ? 116 : W / 2 - 80);
+  const menuY0 = () => (titleArt() ? 184 : TITLE_Y0);
   class Title {
     constructor(game) {
       this.game = game; this.t = 0; this.sel = 0; this.showHelp = false; this.sub = null;
@@ -69,8 +224,8 @@
     enter() { A.playMusic('title'); }
     rowAt(pt) {
       for (let i = 0; i < this.items.length; i++) {
-        const y = TITLE_Y0 + i * TITLE_STEP;
-        if (pt.y >= y - 3 && pt.y < y + TITLE_STEP - 3 && Math.abs(pt.x - (W / 2 - 80)) < 130) return i;
+        const y = menuY0() + i * TITLE_STEP;
+        if (pt.y >= y - 3 && pt.y < y + TITLE_STEP - 3 && Math.abs(pt.x - menuX()) < (titleArt() ? 100 : 130)) return i;
       }
       return -1;
     }
@@ -104,40 +259,95 @@
       else if (id === 'settings') this.sub = this.hub = new SettingsHub();
       else this.showHelp = true;
     }
+    drawPainted(ctx) {
+      const t = this.t, mx = menuX(), y0 = menuY0();
+      const art = WL.art.plateLayer('title-art', W, H, 2.5, 0);
+      WL.gfx.blit(ctx, art, 0, 0);
+      // sun glints drifting across the deck lacquer
+      if (!WL.perf.lite) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 5; i++) {
+          const k = (t * 0.12 + i * 0.21) % 1;
+          ctx.globalAlpha = Math.sin(k * Math.PI) * 0.35;
+          const gx = 120 + i * 110 + k * 40, gy = 300 + (i % 2) * 18;
+          S.drawGlow(ctx, gx, gy, 16, 0.6);
+        }
+        ctx.restore();
+      }
+      const top = ctx.createLinearGradient(0, 0, 0, 30);
+      top.addColorStop(0, 'rgba(4,10,30,0.4)'); top.addColorStop(1, 'rgba(4,10,30,0)');
+      ctx.fillStyle = top; ctx.fillRect(0, 0, W, 30);
+      const foot = ctx.createLinearGradient(0, 306, 0, H);
+      foot.addColorStop(0, 'rgba(4,10,30,0)'); foot.addColorStop(0.45, 'rgba(4,10,30,0.6)'); foot.addColorStop(1, 'rgba(4,10,30,0.8)');
+      ctx.fillStyle = foot; ctx.fillRect(0, 306, W, H - 306);
+      T.draw(ctx, 'WHALE LANCE AIR CONDITIONING AND HEATING PRESENTS', W / 2, 3, { size: 5, align: 'center', color: '#fffbe8', stroke: '#0b1d4a', strokeWidth: 3 });
+      drawLogo(ctx, W / 2, 12 + Math.sin(t * 2) * 2, 330);
+      if (this.sub) { this.sub.draw(ctx); D.scanlines(ctx, 0.08); return; }
+      if (this.showHelp) { this.drawHelp(ctx); D.scanlines(ctx, 0.08); return; }
+      const n = this.items.length;
+      const pTop = y0 - 30, pH = n * TITLE_STEP + 52;
+      const pg = ctx.createLinearGradient(0, pTop, 0, pTop + pH);
+      pg.addColorStop(0, 'rgba(10,26,64,0.64)'); pg.addColorStop(1, 'rgba(4,10,30,0.74)');
+      D.fillRRect(ctx, mx - 100, pTop, 200, pH, 10, pg, 'rgba(255,255,255,0.45)');
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(mx - 90, pTop + 1, 180, 1);
+      T.draw(ctx, '"WE SPEAR THE COMPETITION"', mx, pTop + 7, { size: 6, align: 'center', color: '#ffffff', stroke: '#0b1d4a', strokeWidth: 3 });
+      T.draw(ctx, this.run ? (() => { const L = WL.LEVELS[this.run.level]; return `SAVED: STAGE ${L.id} WAVE ${this.run.wave + 1}/${L.waves.length}`; })() : 'THE SALAD BAR STARTED IT.', mx, pTop + 18, { size: 5, align: 'center', color: this.run ? '#8ff' : '#ffe98a', stroke: '#0b1d4a', strokeWidth: 3 });
+      this.items.forEach((it, i) => {
+        const seld = i === this.sel;
+        const y = y0 + i * TITLE_STEP;
+        if (seld) {
+          const hw = T.width(ctx, it.label, 10) / 2 + 20;
+          const sg = ctx.createLinearGradient(mx - hw, 0, mx + hw, 0);
+          sg.addColorStop(0, 'rgba(255,140,20,0)'); sg.addColorStop(0.5, 'rgba(255,160,30,0.45)'); sg.addColorStop(1, 'rgba(255,140,20,0)');
+          ctx.fillStyle = sg; ctx.fillRect(mx - hw, y - 3, hw * 2, 15);
+          S.hibiscus(ctx, mx - hw + 9, y + 4.5, 5, '#ff4a6a', '#ffe070', t * 2);
+        }
+        T.draw(ctx, it.label, mx, y, { size: 10, align: 'center', color: seld ? (Math.floor(t * 6) % 2 ? '#ffe14a' : '#fff') : '#d8f0ff', stroke: '#0b1d4a', strokeWidth: 3 });
+      });
+      if (Math.floor(t * 2) % 2 === 0) T.draw(ctx, WL.input.touchEnabled ? 'TAP A ROW TO START' : 'PRESS ENTER OR CLICK', mx, y0 + n * TITLE_STEP + 6, { size: 6, align: 'center', color: '#fff', stroke: '#0b1d4a', strokeWidth: 3 });
+      T.draw(ctx, WL.input.legend(), W / 2, 320, { size: 6, align: 'center', color: '#dde8f4', stroke: '#050a18', strokeWidth: 2 });
+      T.draw(ctx, `${WL.input.hint('pause', 1)} PAUSE    M MUTE    \\ FULLSCREEN    CLICK A MENU ROW`, W / 2, 333, { size: 6, align: 'center', color: '#b8c8da', stroke: '#050a18', strokeWidth: 2 });
+      T.draw(ctx, '(c) 2026 WHALE LANCE A/C & HEATING. INSERT COIN. A FAMILY ROAST.', W / 2, 347, { size: 5, align: 'center', color: '#9aabbd' });
+      if (WL.display.pc) T.draw(ctx, WL.display.modeLabel(), 8, 6, { size: 6, color: '#cde' });
+      D.scanlines(ctx, 0.08);
+    }
     draw(ctx) {
+      if (titleArt()) { this.drawPainted(ctx); return; }
       const t = this.t;
-      // sunset sky
-      const g = ctx.createLinearGradient(0, 0, 0, 200); g.addColorStop(0, '#1b1f5a'); g.addColorStop(0.5, '#c8407a'); g.addColorStop(1, '#ffb347');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, 200);
-      D.circle(ctx, 500, 150, 40, '#ffe680');
-      // ocean
-      const og = ctx.createLinearGradient(0, 190, 0, H); og.addColorStop(0, '#2a4a9a'); og.addColorStop(1, '#0b1a3a');
-      ctx.fillStyle = og; ctx.fillRect(0, 190, W, H - 190);
-      ctx.fillStyle = 'rgba(255,220,150,0.35)'; for (let i = 0; i < 30; i++) { const wx = ((i * 71 + t * 20) % (W + 40)) - 20; ctx.fillRect(wx, 196 + (i * 17) % 150, 10 + (i % 4) * 8, 1.5); }
-      // ship silhouette (Pride of America)
-      ctx.save(); ctx.translate(((t * 12) % (W + 500)) - 250, 0);
-      ctx.fillStyle = '#f4f4f8';
-      ctx.beginPath(); ctx.moveTo(0, 190); ctx.lineTo(30, 160); ctx.lineTo(300, 160); ctx.lineTo(330, 190); ctx.closePath(); ctx.fill();
-      ctx.fillRect(50, 130, 230, 30); ctx.fillRect(80, 110, 170, 20); D.fillRRect(ctx, 200, 90, 40, 22, 4, '#1b3f8a');
-      // flag mural
-      ctx.fillStyle = '#c8322a'; for (let i = 0; i < 4; i++) ctx.fillRect(40, 166 + i * 6, 120, 3);
-      ctx.fillStyle = '#1b3f8a'; ctx.fillRect(40, 164, 40, 12); ctx.fillStyle = '#fff'; for (let i = 0; i < 6; i++) ctx.fillRect(44 + (i % 3) * 12, 166 + Math.floor(i / 3) * 6, 3, 3);
-      ctx.fillStyle = '#1b3f8a'; for (let i = 0; i < 20; i++) ctx.fillRect(60 + i * 11, 136, 6, 6); for (let i = 0; i < 14; i++) ctx.fillRect(90 + i * 11, 114, 6, 5);
+      // The Lido deck itself, drifting slowly, is the backdrop.
+      WL.light.set({ side: 1, cast: 0.34 });
+      WL.LEVELS[0].bg(ctx, (t * 14) % 1900, t);
+      // Hero: Lance mid-brag on the deck, a sprout still seeing stars.
+      ctx.save(); ctx.translate(596, 350); ctx.scale(1.35, 1.35);
+      S.drawEnemy(ctx, 0, 0, { type: 'sprout', pose: 'stunned', t, facing: -1 });
       ctx.restore();
-      // logo
-      const bounce = Math.sin(t * 2) * 3;
-      T.draw(ctx, 'WHALE LANCE AIR CONDITIONING AND HEATING PRESENTS', W / 2, 14, { size: 7, align: 'center', color: '#ffe' });
-      T.draw(ctx, 'WHALE LANCE', W / 2 - 80, 40 + bounce, { size: 26, align: 'center', gradient: ['#fff3a0', '#ffb300', '#e0301e'], stroke: '#2a0a0a', strokeWidth: 6 });
-      T.draw(ctx, 'BUFFET BRAWL', W / 2 - 80, 78 + bounce, { size: 34, align: 'center', gradient: ['#ffffff', '#ffd23f', '#ff4d00'], stroke: '#2a0a0a', strokeWidth: 8 });
-      // whale logo
-      ctx.save(); ctx.translate(W / 2 - 80, 130); D.ellipse(ctx, 0, 0, 30, 14, '#fff', S.OUT); ctx.beginPath(); ctx.moveTo(26, -4); ctx.lineTo(44, -18); ctx.lineTo(42, 4); ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke(); D.circle(ctx, -14, -3, 2, S.OUT);
-      ctx.fillStyle = '#fff'; ctx.fillRect(-4, -20, 2, 8); ctx.fillRect(-8, -18, 2, 6); ctx.fillRect(0, -18, 2, 6); ctx.restore();
-      T.draw(ctx, '"WE SPEAR THE COMPETITION"', W / 2 - 80, 148, { size: 7, align: 'center', color: '#ffe' });
-      T.draw(ctx, 'THE SALAD BAR STARTED IT.', W / 2 - 80, 164, { size: 6, align: 'center', color: '#ffe9a0' });
-      // Lance portrait
       const img = WL.assets.get('lancePortrait');
-      if (img) { const s = 190 / img.height; ctx.drawImage(img, W - 30 - img.width * s, 40 + Math.sin(t * 2) * 2, img.width * s, img.height * s); }
-      else S.drawLanceBust(ctx, W - 112, 150 + Math.sin(t * 2) * 2, 78, { mood: 'grin' });
+      if (img) { const s = 190 / img.height; ctx.drawImage(img, W - 30 - img.width * s, 110 + Math.sin(t * 2) * 2, img.width * s, img.height * s); }
+      else {
+        D.shadow(ctx, 516, 350, 44, 10, 0);
+        ctx.save(); ctx.translate(516, 350); ctx.scale(2.05, 2.05);
+        S.drawLance(ctx, 0, 0, { pose: 'victory', t, facing: -1 });
+        ctx.restore();
+      }
+      // Scrims: a glass menu plate at left, and a footer gradient under the legends.
+      const foot = ctx.createLinearGradient(0, 300, 0, H);
+      foot.addColorStop(0, 'rgba(4,10,30,0)'); foot.addColorStop(0.4, 'rgba(4,10,30,0.62)'); foot.addColorStop(1, 'rgba(4,10,30,0.82)');
+      ctx.fillStyle = foot; ctx.fillRect(0, 300, W, H - 300);
+      const top = ctx.createLinearGradient(0, 0, 0, 26);
+      top.addColorStop(0, 'rgba(4,10,30,0.35)'); top.addColorStop(1, 'rgba(4,10,30,0)');
+      ctx.fillStyle = top; ctx.fillRect(0, 0, W, 26);
+      // logo
+      const bounce = Math.sin(t * 2) * 2.5;
+      T.draw(ctx, 'WHALE LANCE AIR CONDITIONING AND HEATING PRESENTS', W / 2, 8, { size: 6, align: 'center', color: '#fffbe8', stroke: '#0b1d4a', strokeWidth: 3 });
+      drawLogo(ctx, W / 2 - 80, 20 + bounce, 380);
+      T.draw(ctx, '"WE SPEAR THE COMPETITION"', W / 2 - 80, 114, { size: 7, align: 'center', color: '#ffffff', stroke: '#0b1d4a', strokeWidth: 3 });
+      T.draw(ctx, 'THE SALAD BAR STARTED IT.', W / 2 - 80, 127, { size: 6, align: 'center', color: '#ffe98a', stroke: '#0b1d4a', strokeWidth: 3 });
+      if (!this.sub && !this.showHelp) {
+        const pg = ctx.createLinearGradient(0, 170, 0, 300);
+        pg.addColorStop(0, 'rgba(10,24,60,0.62)'); pg.addColorStop(1, 'rgba(4,10,30,0.72)');
+        D.fillRRect(ctx, W / 2 - 80 - 134, 172, 268, 128, 10, pg, 'rgba(255,255,255,0.4)');
+        ctx.fillStyle = 'rgba(255,255,255,0.16)'; ctx.fillRect(W / 2 - 80 - 124, 173, 248, 1);
+      }
       // menu
       if (this.sub) { this.sub.draw(ctx); D.scanlines(ctx, 0.08); return; }
       if (!this.showHelp) {
@@ -147,9 +357,17 @@
         }
         this.items.forEach((it, i) => {
           const seld = i === this.sel;
-          T.draw(ctx, (seld ? '> ' : '  ') + it.label, W / 2 - 80, TITLE_Y0 + i * TITLE_STEP, { size: 10, align: 'center', color: seld ? (Math.floor(t * 6) % 2 ? '#ffe14a' : '#fff') : '#cfd' });
+          const y = TITLE_Y0 + i * TITLE_STEP;
+          if (seld) {
+            const hw = T.width(ctx, it.label, 10) / 2 + 22;
+            const sg = ctx.createLinearGradient(W / 2 - 80 - hw, 0, W / 2 - 80 + hw, 0);
+            sg.addColorStop(0, 'rgba(255,140,20,0)'); sg.addColorStop(0.5, 'rgba(255,160,30,0.42)'); sg.addColorStop(1, 'rgba(255,140,20,0)');
+            ctx.fillStyle = sg; ctx.fillRect(W / 2 - 80 - hw, y - 3, hw * 2, 15);
+            S.hibiscus(ctx, W / 2 - 80 - hw + 10, y + 4.5, 5, '#ff4a6a', '#ffe070', t * 2);
+          }
+          T.draw(ctx, it.label, W / 2 - 80, y, { size: 10, align: 'center', color: seld ? (Math.floor(t * 6) % 2 ? '#ffe14a' : '#fff') : '#d8f0ff', stroke: '#0b1d4a', strokeWidth: 3 });
         });
-        if (Math.floor(t * 2) % 2 === 0) T.draw(ctx, WL.input.touchEnabled ? 'TAP A ROW TO START' : 'PRESS ENTER OR CLICK', W / 2 - 80, 292, { size: 8, align: 'center', color: '#fff' });
+        if (Math.floor(t * 2) % 2 === 0) T.draw(ctx, WL.input.touchEnabled ? 'TAP A ROW TO START' : 'PRESS ENTER OR CLICK', W / 2 - 80, 292, { size: 7, align: 'center', color: '#fff', stroke: '#0b1d4a', strokeWidth: 3 });
         T.draw(ctx, WL.input.legend(), W / 2, 318, { size: 6, align: 'center', color: '#bcd' });
         T.draw(ctx, `${WL.input.hint('pause', 1)} PAUSE    M MUTE    \\ FULLSCREEN    CLICK A MENU ROW`, W / 2, 332, { size: 6, align: 'center', color: '#9ab' });
         T.draw(ctx, '(c) 2026 WHALE LANCE A/C & HEATING. INSERT COIN. A FAMILY ROAST.', W / 2, 346, { size: 5, align: 'center', color: '#89a' });
@@ -205,106 +423,9 @@
     }
   }
 
-  /* ================================================================== */
-  /* Cutscene: sequence of art panels with captions                     */
-  /* ================================================================== */
-  class Cutscene {
-    constructor(game, panels, onDone, music) { this.game = game; this.panels = panels; this.onDone = onDone; this.idx = 0; this.t = 0; this.chars = 0; this.music = music; }
-    enter() { if (this.music) A.playMusic(this.music); }
-    get panel() { return this.panels[this.idx]; }
-    fullText() { return this.panel.lines.join('\n'); }
-    update(dt, inp) {
-      this.t += dt; this.chars += dt * 38;
-      const full = this.fullText().length;
-      if (inp.pressed.pause) { A.sfx.select(); this.onDone(); return; }
-      if (anyPress(inp)) {
-        A.sfx.blip();
-        if (this.chars < full) this.chars = full;
-        else this.next();
-      } else if (this.chars > full && this.t > 7.5) this.next();
-    }
-    next() { this.idx++; this.t = 0; this.chars = 0; if (this.idx >= this.panels.length) this.onDone(); }
-    draw(ctx) {
-      const p = this.panel; if (!p) return;
-      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-      const img = WL.assets.get(p.img);
-      const boxH = 74;
-      if (img) {
-        // backdrop: darkened blow-up of the same panel fills the side bars
-        const cs = Math.max(W / img.width, H / img.height) * 1.1;
-        ctx.save(); ctx.globalAlpha = 0.35; ctx.drawImage(img, (W - img.width * cs) / 2, (H - img.height * cs) / 2, img.width * cs, img.height * cs); ctx.restore();
-        ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, H);
-        // the panel itself, fully visible above the caption box, with a slow Ken-Burns zoom
-        const areaH = H - boxH + 2;
-        const zoom = 1 + Math.min(this.t, 8) * 0.005;
-        const s = Math.min(W / img.width, areaH / img.height) * zoom;
-        const dw = img.width * s, dh = img.height * s;
-        ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, areaH); ctx.clip();
-        ctx.drawImage(img, (W - dw) / 2, (areaH - dh) / 2, dw, dh);
-        ctx.restore();
-      } else {
-        // procedural stand-in panel
-        const g = ctx.createLinearGradient(0, 0, 0, H - boxH); g.addColorStop(0, '#1b3f8a'); g.addColorStop(1, '#0b1a3a'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H - boxH);
-        T.draw(ctx, p.title, W / 2, 110, { size: 18, align: 'center', gradient: ['#fff3a0', '#ff4d00'], stroke: '#000', strokeWidth: 5 });
-        S.drawLance(ctx, W / 2, 250, { pose: 'idle', t: this.t, facing: 1 });
-      }
-      // caption box
-      D.fillRRect(ctx, 8, H - boxH + 4, W - 16, boxH - 10, 4, 'rgba(8,8,24,0.92)', '#ffe14a');
-      T.draw(ctx, p.title, 18, H - boxH + 12, { size: 8, color: '#ffe14a' });
-      const shown = this.fullText().slice(0, Math.floor(this.chars)).split('\n');
-      shown.forEach((l, i) => T.draw(ctx, l, 18, H - boxH + 28 + i * 12, { size: 7, color: '#fff' }));
-      T.draw(ctx, `${this.idx + 1}/${this.panels.length}`, W - 18, H - boxH + 12, { size: 7, align: 'right', color: '#aaa' });
-      if (Math.floor(this.t * 2) % 2 === 0) T.draw(ctx, confirmWord(), W - 18, H - 18, { size: 7, align: 'right', color: '#aaa' });
-      T.draw(ctx, 'P: SKIP', 18, H - 18, { size: 6, color: '#777' });
-    }
-  }
-
-  /* ================================================================== */
-  /* StoryBeat: between-stage repair scene with a thermometer           */
-  /* ================================================================== */
-  class StoryBeat {
-    constructor(game, o) {
-      // o: {title, lines, tempFrom, tempTo, palette, onDone, pose, thin}
-      this.game = game; Object.assign(this, o); this.t = 0; this.chars = 0;
-    }
-    enter() { A.playMusic(this.music || 'title'); }
-    fullText() { return this.lines.join('\n'); }
-    update(dt, inp) {
-      this.t += dt; this.chars += dt * 40;
-      const full = this.fullText().length;
-      if (anyPress(inp) || inp.pressed.pause) { A.sfx.blip(); if (this.chars < full) this.chars = full; else this.onDone(); }
-      else if (this.chars > full && this.t > 7) this.onDone();
-    }
-    draw(ctx) {
-      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#05050f'); g.addColorStop(1, this.palette || '#1b2230'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      // floor line
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 262, W, H - 262);
-      // ducts
-      for (let i = 0; i < 4; i++) D.fillRRect(ctx, 20 + i * 160, 30 + (i % 2) * 14, 120, 16, 8, '#5b6b7c', S.OUT);
-      // Lance working
-      S.drawLance(ctx, 150, 262, { pose: this.pose || 'carry', t: this.t, facing: 1, thin: this.thin });
-      // thermometer
-      const tx = 470, ty = 50, th = 150;
-      D.fillRRect(ctx, tx - 14, ty - 10, 28, th + 30, 12, '#eee', S.OUT);
-      D.fillRRect(ctx, tx - 6, ty, 12, th, 6, '#bbb', S.OUT);
-      const from = this.tempFrom, to = this.tempTo;
-      const k = U.clamp((this.t - 0.6) / 2.5, 0, 1);
-      const cur = U.lerp(from, to, k);
-      const pct = U.clamp((cur - 60) / 40, 0, 1);
-      const hcol = cur > 85 ? '#e03020' : cur > 76 ? '#f0a020' : '#30a0e0';
-      ctx.fillStyle = hcol; ctx.fillRect(tx - 4, ty + th - th * pct, 8, th * pct);
-      D.circle(ctx, tx, ty + th + 8, 12, hcol, S.OUT);
-      for (let i = 0; i <= 4; i++) { ctx.fillStyle = '#333'; ctx.fillRect(tx + 10, ty + i * (th / 4), 8, 2); T.draw(ctx, `${100 - i * 10}`, tx + 22, ty + i * (th / 4) - 4, { size: 6, color: '#ddd' }); }
-      T.draw(ctx, 'SHIP TEMP', tx, ty - 34, { size: 8, align: 'center', color: '#fff' });
-      T.draw(ctx, `${Math.round(cur)}°F`, tx, ty + th + 34, { size: 14, align: 'center', color: hcol, stroke: '#000' });
-      // text box
-      D.fillRRect(ctx, 8, 274, W - 16, 78, 4, 'rgba(8,8,24,0.92)', '#ffe14a');
-      T.draw(ctx, this.title, 18, 282, { size: 8, color: '#ffe14a' });
-      const shown = this.fullText().slice(0, Math.floor(this.chars)).split('\n');
-      shown.forEach((l, i) => T.draw(ctx, l, 18, 298 + i * 13, { size: 7, color: '#fff' }));
-      if (Math.floor(this.t * 2) % 2 === 0) T.draw(ctx, confirmWord(), W - 18, H - 16, { size: 7, align: 'right', color: '#aaa' });
-    }
-  }
+  /* Cutscene (the opening) and StoryBeat (between stages, the ending) are
+     cinematic reels: see js/cinema.js. */
+  const { Cutscene, StoryBeat } = WL.cinema;
 
   /* ================================================================== */
   /* FX manager                                                         */
@@ -321,6 +442,7 @@
       f.kind = kind; f.x = x; f.y = y; f.t = 0; f.life = life;
       f.vx = 0; f.vy = 0; f.r = 0; f.big = false; f.color = '#fff';
       f.square = false; f.shard = false; f.str = '';
+      f.shape = null; f.rot = 0; f.vr = 0; f.floor = 0; f.rest = false;
       this.list.push(f);
       return f;
     }
@@ -331,7 +453,31 @@
       f.vx = vx; f.vy = vy; f.color = color; f.r = r; f.square = !!square; f.shard = !!shard;
       return true;
     }
-    spark(x, y, big) { const f = this._p('spark', x, y, 0.22, true); f.big = !!big; }
+    /** Shaped debris (floret, leaf, tomato, fork...) that spins and bounces on the deck. */
+    _bit(x, y, vx, vy, life, shape, color, r, floor) {
+      const f = this._p('chunk', x, y, life);
+      if (!f) return false;
+      f.vx = vx; f.vy = vy; f.color = color; f.r = r; f.shape = shape;
+      f.rot = U.rand(0, 6.28); f.vr = U.rand(-14, 14); f.floor = floor ? floor + U.rand(-8, 10) : 0;
+      return true;
+    }
+    spark(x, y, big) {
+      const f = this._p('spark', x, y, 0.22, true); f.big = !!big;
+      if (WL.perf.lite) return;
+      // hot embers that fly off the contact point and fall
+      for (let i = 0, n = this._n(big ? 10 : 6); i < n; i++) {
+        const e = this._p('ember', x, y, U.rand(0.22, 0.42));
+        if (!e) return;
+        const a = U.rand(0, 6.28), v = U.rand(160, big ? 420 : 300);
+        e.vx = Math.cos(a) * v; e.vy = Math.sin(a) * v - 60; e.big = !!big;
+      }
+    }
+    /** A squashed salad splat left on the deck after a heavy hit; it fades out. */
+    splat(x, floor) {
+      if (WL.perf.lite || !WL.art.has('props')) return;
+      const f = this._p('splat', x, floor, 4.5);
+      if (f) { f.r = U.rand(0.9, 1.3); f.rot = U.rand(-0.3, 0.3); }
+    }
     dust(x, y, r) {
       const n = WL.perf.lite ? 2 : 4;
       for (let i = 0; i < n; i++) {
@@ -344,15 +490,33 @@
       const f = this._p('text', x, y, life || 1.1, true);
       f.str = str; f.color = color || '#fff'; f.vy = -30;
     }
-    burst(x, y, type) {
-      const V = S.VEG[type]; const cols = V ? [V.body || V.swirl, V.dark || V.cup, '#fff'] : ['#fff'];
-      for (let i = 0, n = this._n(10); i < n; i++) if (!this._chunk(x, y, U.rand(-160, 160), U.rand(-260, -60), 0.8, U.pick(cols), U.rand(2, 5))) return;
+    /* What each green sheds when it gets hit: [shape, color] pairs. */
+    static foodBits(type) {
+      switch (type) {
+        case 'broccoli': return [['floret', '#4f9a2c'], ['floret', '#5aa83a'], ['leaf', '#6ab83a'], ['tomato', '#d8281e'], ['coin', '#f08a1e']];
+        case 'sprout': return [['leaf', '#95d650'], ['leaf', '#7bbf3a'], ['floret', '#6ab83a']];
+        case 'celery': return [['leaf', '#a6d46a'], ['splinter', '#c6e88a'], ['leaf', '#5aa83a']];
+        case 'carrot': return [['coin', '#f08a1e'], ['coin', '#f08a1e'], ['leaf', '#3f9b2f'], ['splinter', '#f08a1e']];
+        case 'spinach': return [['leaf', '#2f6b2a'], ['leaf', '#3f8a36'], ['tomato', '#d8281e']];
+        case 'kale': return [['leaf', '#1f4d3a'], ['leaf', '#3e8a5e'], ['floret', '#3e8a5e']];
+        case 'froyo': return [['crumb', '#f7a7c7'], ['crumb', '#f6f2ea'], ['crumb', '#e82a3a'], ['spoon', '#c9cfd9']];
+      }
+      return [['leaf', '#6ab83a'], ['tomato', '#d8281e'], ['coin', '#f08a1e']];
     }
-    foodDebris(x, y, type) {
-      const V = S.VEG[type];
-      const cols = V ? [V.body || V.swirl, V.dark || V.cup, '#ffe14a', '#ffffff'] : ['#55d840', '#f08a1e', '#ffffff'];
-      for (let i = 0, n = this._n(7); i < n; i++) {
-        if (!this._chunk(x, y, U.rand(-140, 140), U.rand(-200, -50), U.rand(0.4, 0.7), U.pick(cols), U.rand(1.5, 3.5), i % 2 === 0)) return;
+    burst(x, y, type, floor) {
+      const bits = FX.foodBits(type);
+      for (let i = 0, n = this._n(12); i < n; i++) {
+        const [shape, col] = bits[i % bits.length];
+        if (!this._bit(x, y, U.rand(-170, 170), U.rand(-300, -80), U.rand(1.0, 1.4), shape, col, U.rand(3, 4.6), floor || y + 36)) return;
+      }
+    }
+    foodDebris(x, y, type, floor, big) {
+      // salad-bar chaos: the goon's own greens plus whatever it had for lunch
+      const bits = FX.foodBits(type).concat([['tomato', '#d8281e'], ['leaf', '#8fd04a']]);
+      if (big && floor) this.splat(x + U.rand(-10, 10), floor + 4);
+      for (let i = 0, n = this._n(big ? 13 : 8); i < n; i++) {
+        const [shape, col] = U.pick(bits);
+        if (!this._bit(x, y, U.rand(-170, 170), U.rand(-260, -70), U.rand(0.8, 1.2), shape, col, U.rand(2.4, 3.8), floor || y + 44)) return;
       }
     }
     impactRing(x, y, big) {
@@ -363,7 +527,17 @@
       const cols = ['#d8ff8a', '#7ad83a', '#5a8a2a', '#efe6c8', '#c8a15a'];
       for (let i = 0, n = this._n(22); i < n; i++) if (!this._chunk(x, y, U.rand(-420, 420), U.rand(-460, -40), 0.85, U.pick(cols), U.rand(2, 6), i % 3 === 0)) return;
     }
-    debris(x, y, kind) {
+    debris(x, y, kind, floor) {
+      const kit = { plates: [['shard', '#ffffff'], ['shard', '#ffffff'], ['fork', '#c9cfd9'], ['spoon', '#c9cfd9']], tray: [['fork', '#c9cfd9'], ['spoon', '#c9cfd9'], ['tomato', '#d8281e'], ['leaf', '#8fd04a'], ['shard', '#ffffff']],
+        cart: [['fork', '#c9cfd9'], ['spoon', '#c9cfd9'], ['tomato', '#d8281e'], ['coin', '#f08a1e'], ['floret', '#5aa83a']], chair: [['splinter', '#5c2f15'], ['splinter', '#7a421c'], ['crumb', '#881b24']],
+        crate: [['splinter', '#b07a3a'], ['splinter', '#6a4218']], cooler: [['crumb', '#3a78c8'], ['crumb', '#f0f0f0'], ['coin', '#f08a1e']] }[kind];
+      if (kit) {
+        for (let i = 0, n = this._n(kind === 'plates' ? 18 : 15); i < n; i++) {
+          const [shape, col] = kit[i % kit.length];
+          if (!this._bit(x, y, U.rand(-220, 220), U.rand(-320, -90), U.rand(0.9, 1.4), shape, col, U.rand(2.6, 4.2), floor || y + 18)) return;
+        }
+        return;
+      }
       let cols = ['#d0d4dc', '#8a8f9a', '#c8322a'];
       let count = 14;
       if (kind === 'plates') {
@@ -392,12 +566,32 @@
       for (let i = 0; i < list.length; i++) {
         const f = list[i];
         f.t += dt;
-        if (f.kind === 'chunk') { f.vy += 700 * dt; f.x += f.vx * dt; f.y += f.vy * dt; }
+        if (f.kind === 'chunk') {
+          if (f.rest) { f.vx *= Math.max(0, 1 - dt * 8); f.x += f.vx * dt; }
+          else {
+            f.vy += 700 * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.vr * dt;
+            if (f.floor && f.y > f.floor && f.vy > 0) {
+              f.y = f.floor; f.vy *= -0.36; f.vx *= 0.6; f.vr *= 0.5;
+              if (f.vy > -45) { f.vy = 0; f.rest = true; }
+            }
+          }
+        }
         else if (f.kind === 'text') f.y += f.vy * dt;
+        else if (f.kind === 'ember') { f.vy += 900 * dt; f.vx *= 1 - dt * 3; f.x += f.vx * dt; f.y += f.vy * dt; }
         if (f.t < f.life) list[j++] = f;
         else this.pool.push(f);
       }
       list.length = j;
+    }
+    /** Floor decals (salad splats), drawn under the bodies. */
+    drawFloor(ctx, camX) {
+      for (const f of this.list) {
+        if (f.kind !== 'splat') continue;
+        ctx.save(); ctx.globalAlpha = Math.min(1, (f.life - f.t) / 1.2) * 0.9;
+        ctx.translate(f.x - camX, f.y); ctx.rotate(f.rot);
+        WL.art.draw(ctx, 'props', 'splash', 0, 0, { sx: 1.9 * f.r, sy: 0.55 * f.r });
+        ctx.restore();
+      }
     }
     draw(ctx, camX) {
       const textSize = WL.settings.data.bigHud ? 10 : 8;
@@ -406,12 +600,28 @@
         const sx = f.x - camX;
         switch (f.kind) {
           case 'spark': S.drawHitSpark(ctx, sx, f.y, f.t, f.big); break;
+          case 'ember': {
+            const k = f.t / f.life;
+            ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1 - k;
+            ctx.strokeStyle = k < 0.4 ? '#fff6c8' : '#ffa030'; ctx.lineWidth = f.big ? 1.8 : 1.3; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(sx, f.y); ctx.lineTo(sx - f.vx * 0.022, f.y - f.vy * 0.022); ctx.stroke();
+            ctx.restore();
+            break;
+          }
+          case 'splat': break;
           case 'dust': S.drawDust(ctx, sx, f.y, f.t, f.r); break;
           case 'ring': {
             ctx.save();
             const k = f.t / f.life;
             ctx.globalAlpha = Math.max(0, 1 - k);
             const r = (f.big ? 28 : 16) + k * (f.big ? 40 : 26);
+            if (!WL.perf.lite) {
+              ctx.globalCompositeOperation = 'lighter';
+              ctx.strokeStyle = f.big ? 'rgba(255,120,30,0.7)' : 'rgba(255,220,150,0.5)';
+              ctx.lineWidth = Math.max(1, (1 - k) * 7);
+              ctx.beginPath(); ctx.ellipse(sx, f.y, r * 1.08, r * 0.46, 0, 0, Math.PI * 2); ctx.stroke();
+              ctx.globalCompositeOperation = 'source-over';
+            }
             ctx.strokeStyle = f.big ? '#ffe14a' : '#ffffff';
             ctx.lineWidth = Math.max(1, (1 - k) * 3);
             ctx.beginPath();
@@ -422,8 +632,12 @@
           }
           case 'chunk': {
             ctx.save();
-            ctx.globalAlpha = Math.max(0, 1 - f.t / f.life);
-            if (f.shard) {
+            const left = f.life - f.t;
+            ctx.globalAlpha = f.shape ? Math.max(0, Math.min(1, left / (f.life * 0.35))) : Math.max(0, 1 - f.t / f.life);
+            if (f.shape) {
+              if (f.floor && !WL.perf.lite) { ctx.save(); ctx.globalAlpha *= 0.25 * Math.max(0, 1 - (f.floor - f.y) / 60); D.ellipse(ctx, sx, f.floor + 1, f.r * 1.1, f.r * 0.35, '#000'); ctx.restore(); }
+              S.drawDebris(ctx, sx, f.y, WL.perf.lite && f.shape !== 'shard' ? 'crumb' : f.shape, f.color || '#6ab83a', f.r, f.rot);
+            } else if (f.shard) {
               ctx.fillStyle = f.color;
               ctx.beginPath();
               ctx.moveTo(sx - f.r, f.y + f.r);
@@ -449,6 +663,13 @@
   /* Play                                                               */
   /* ================================================================== */
   const PAUSE_Y0 = 96, PAUSE_STEP = 18;
+  // Key light per stage: the Lido sun sits high on the right; the indoor decks use overhead fixtures.
+  const STAGE_LIGHT = {
+    1: { side: 1, cast: 0.34, gloss: 0.34 },
+    2: { side: -1, cast: 0.18, rim: 'rgba(255,200,120,0.8)' },
+    3: { side: 1, cast: 0.2, gloss: 0.16 },
+    4: { side: -1, cast: 0.16, rim: 'rgba(200,235,255,0.9)', gloss: 0.18 }
+  };
   class Play {
     constructor(game, levelIndex, carry) {
       this.game = game; this.levelIndex = levelIndex; this.level = WL.LEVELS[levelIndex];
@@ -855,6 +1076,7 @@
       ctx.save();
       const snap = WL.display.mode === 'classic' ? 1 : WL.display.renderScale;
       ctx.translate(Math.round((this.shakeX + this.punchX) * snap) / snap, Math.round((this.shakeY + this.punchY) * snap) / snap);
+      WL.light.set(STAGE_LIGHT[L.id]);
       L.bg(ctx, this.camX, this.t);
       // hazards (steam vents)
       for (const h of this.hazards) {
@@ -878,6 +1100,7 @@
           ctx.save(); ctx.globalAlpha = Math.min(1, (pu.life - pu.t)); S.drawPuddle(ctx, sx, pu.y, pu.r, pu.t); ctx.restore();
         }
       }
+      this.fx.drawFloor(ctx, this.camX);
       this.drawTells(ctx, 'floor');
       // depth-sorted entities
       const draws = [];
@@ -892,6 +1115,7 @@
       this.drawTells(ctx, 'label');
       if (this.fartT >= 0) S.drawFartCloud(ctx, this.fartX - this.camX, this.fartY, this.fartT, p.facing);
       this.fx.draw(ctx, this.camX);
+      if (L.fg) L.fg(ctx, this.camX, this.t);
       ctx.restore();
       if (this.fartT >= 0 && this.fartT < 1.05) {
         const k = Math.sin(Math.min(1, this.fartT / 0.1) * Math.PI / 2) * Math.min(1, (1.05 - this.fartT) / 0.28);
@@ -1088,90 +1312,116 @@
       const s = big ? 1.25 : 1;
       const hb = Math.round(44 * s);
       this.hudBottom = hb;
-      // top bar with metallic gold border
-      ctx.fillStyle = 'rgba(8,10,22,0.82)'; ctx.fillRect(0, 0, W, hb);
-      ctx.fillStyle = '#d4af37'; ctx.fillRect(0, hb, W, 1.5);
-      ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(0, 0, W, 1);
-
+      // No full-width bar: the sky shows between the HUD pieces. A light
+      // backing sits behind Lance's cluster only, for legibility on white hulls.
       ctx.save();
       ctx.scale(s, s);
-      // lei-framed portrait — the cruise shirt should read in the scrum, not only the cutscene
-      D.fillRRect(ctx, 4, 3, 34, 38, 3, '#6a2f9a', '#ffe14a');
-      ctx.fillStyle = '#f7f2ff'; ctx.fillRect(6, 3, 3, 38); ctx.fillRect(33, 3, 3, 38);
-      const hud = WL.assets.get('lanceHud');
-      if (hud) ctx.drawImage(hud, 8, 7, 26, 30);
-      else drawHudHead(ctx, p.hp < 30 ? 'hurt' : 'neutral');
-      T.draw(ctx, 'LANCE', 42, 5, { size: 8, color: '#ffe14a' });
-      T.draw(ctx, 'A/C', 96, 7, { size: 6, color: '#e7c6ff' });
+      D.fillRRect(ctx, 2, 1, 232, 40, 12, 'rgba(6,12,32,0.34)');
+      // circular portrait with a gold bezel; it flushes red when Lance is low
       const hpPct = p.hp / p.maxHp;
-      D.arcadeBar(ctx, 42, 17, 122, 9, hpPct, this.playerGhostHp / p.maxHp, hpColor(hpPct), cb ? '#ffffff' : '#ff9922', '#22080a');
+      const hud = WL.assets.get('lanceHud');
+      if (hud) { ctx.save(); ctx.beginPath(); ctx.arc(22, 22, 18, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(hud, 4, 4, 36, 36); ctx.restore(); }
+      else drawHudPortrait(ctx, 22, 22, hpPct < 0.3 ? 'hurt' : (p.state === 'attack' ? 'fight' : 'neutral'));
+      drawBezel(ctx, 22, 22, 18, hpPct <= 0.25 && Math.floor(this.t * 4) % 2 === 0);
+      T.cached(ctx, 'LANCE', 45, 3, { size: 8, color: '#ffe14a', stroke: '#1a0e00', strokeWidth: 3 });
+      T.cached(ctx, 'A/C', 91, 5, { size: 5, color: '#e7c6ff', stroke: '#000', strokeWidth: 2 });
+      // long HP bar
+      const barW = 154;
+      D.arcadeBar(ctx, 45, 14, barW, 9, hpPct, this.playerGhostHp / p.maxHp, hpColor(hpPct), cb ? '#ffffff' : '#ff9922', '#22080a');
       // Low health is marked by stripes as well as color.
-      if (hpPct <= 0.25 && hpPct > 0) D.hatch(ctx, 42, 17, Math.max(1, Math.round(122 * hpPct)), 9);
-      if (cb || big) T.draw(ctx, `HP ${Math.ceil(p.hp)}`, 164, 8, { size: 6, align: 'right', color: hpPct <= 0.25 ? '#fff' : '#dde', shadow: false });
-      // lives
-      for (let i = 0; i < Math.max(0, p.lives - 1); i++) { D.circle(ctx, 174 + i * 12, 21, 4.5, '#e0a878', S.OUT); ctx.fillStyle = '#eee'; ctx.fillRect(171 + i * 12, 22, 6, 1.5); }
-      T.draw(ctx, `x${Math.max(0, p.lives - 1)}`, 174 + Math.max(0, p.lives - 1) * 12 + 2, 17, { size: 7, color: '#fff' });
-      // fart meter
+      if (hpPct <= 0.25 && hpPct > 0) D.hatch(ctx, 45, 14, Math.max(1, Math.round(barW * hpPct)), 9);
+      if (cb || big) T.cached(ctx, `HP ${Math.ceil(p.hp)}`, 45 + barW - 2, 15, { size: 6, align: 'right', color: '#fff', stroke: '#000', strokeWidth: 2, shadow: false });
+      // spare lives as hard hats
+      const spare = Math.max(0, p.lives - 1);
+      for (let i = 0; i < spare; i++) hardHat(ctx, 51 + i * 13, 32);
+      T.cached(ctx, `x${spare}`, 46 + Math.max(1, spare) * 13 + 2, 28, { size: 6, color: '#fff', stroke: '#000', strokeWidth: 2 });
+      // Volcano Fart meter
       const full = p.fart >= p.fartMax;
       const pulse = full ? 0.6 + Math.sin(this.t * 10) * 0.4 : 1;
-      T.draw(ctx, 'VOLCANO FART', 42, 29, { size: 6, color: full ? `rgba(160,255,80,${pulse})` : '#9f3' });
-      D.bar(ctx, 124, 29, 94, 7, p.fart / p.fartMax, full ? `rgba(160,255,80,${pulse})` : '#7ad83a', '#12300a');
-      if (full) {
-        if (Math.floor(this.t * 6) % 2 === 0) {
-          D.fillRRect(ctx, 222, 28, 28, 9, 2, '#ffe14a', '#12300a');
-          T.draw(ctx, 'MAX', 236, 29, { size: 6, align: 'center', color: '#111', shadow: false });
-        }
+      const fx0 = 100, fw = 99;
+      D.arcadeBar(ctx, fx0, 28, fw, 7, p.fart / p.fartMax, p.fart / p.fartMax, full ? `rgba(170,255,90,${pulse})` : '#7ad83a', null, '#0e2408');
+      T.cached(ctx, 'VOLCANO FART', fx0 + 3, 29, { size: 4, color: full ? '#15300a' : '#eaffd0', stroke: full ? null : '#0a1a04', strokeWidth: 2, shadow: false });
+      if (full && Math.floor(this.t * 6) % 2 === 0) {
+        D.fillRRect(ctx, fx0 + fw + 5, 27, 26, 9, 3, '#ffe14a', '#12300a');
+        T.cached(ctx, 'MAX', fx0 + fw + 18, 28, { size: 6, align: 'center', color: '#111', shadow: false });
       }
       // toolbox indicator
-      if (p.hasToolbox) { S.tool(ctx, 'toolbox', 256, 20, 0); }
+      if (p.hasToolbox) {
+        S.drawGlow(ctx, 216, 17, 12, 0.35);
+        if (WL.art.has('props')) WL.art.draw(ctx, 'props', 'toolbox', 216, 25, { sx: 1.1, sy: 1.1 });
+        else S.tool(ctx, 'toolbox', 216, 18, 0);
+      }
       ctx.restore();
 
-      ctx.save();
-      ctx.translate(W, 0); ctx.scale(s, s); ctx.translate(-W, 0);
-      // score
-      T.draw(ctx, 'SCORE', W - 8, 6, { size: 7, align: 'right', color: '#ffe14a' });
-      T.draw(ctx, U.pad(p.score, 7), W - 8, 16, { size: 10, align: 'right', color: '#fff' });
-      const temp = L.temp != null ? L.temp : 72;
-      const hot = temp >= 90 ? '#ff5a3a' : temp >= 80 ? '#ffb020' : '#8fd4ff';
-      T.draw(ctx, `${L.short || L.name}  ${temp}°F`, W - 8, 31, { size: 6, align: 'right', color: hot });
-      ctx.restore();
-      // stage progress & coin-op wave indicator. LARGE has no room between
-      // the scaled blocks (the pause button lives there), so it tucks the
-      // line under the score, clear of the centered boss bar.
+      // top-center logo (normal HUD; LARGE needs that room for the scaled blocks)
       const prog = U.clamp(this.camX / Math.max(1, L.length - W), 0, 1);
       const totalWaves = L.waves ? L.waves.length : 1;
       const currentWaveNum = Math.min(this.waveIdx + 1, totalWaves);
       const stageLine = `STAGE ${L.id} • WAVE ${currentWaveNum}/${totalWaves}`;
+      let logoH = 33, hudFloor = 0;
+      if (!big) {
+        logoH = drawLogo(ctx, W / 2, 1, WL.art.plate('logo') ? (this.boss ? 118 : 150) : 144);
+        const ly = Math.max(this.boss ? 28 : 35, logoH + 1);
+        hudFloor = ly + 10;
+        T.cached(ctx, stageLine, W / 2, ly, { size: 5, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+        D.arcadeBar(ctx, W / 2 - 50, ly + 7, 100, 2, prog, prog, '#ffe14a', null, '#1a1a24');
+      }
+
+      // objective tracker, top right: FIX THE A/C, one pip per wave, temp and score
+      ctx.save();
+      ctx.translate(W, 0); ctx.scale(s, s); ctx.translate(-W, 0);
+      const pw = 164, px = W - pw - 4, py = 3, ph = 39;
+      const pg = ctx.createLinearGradient(0, py, 0, py + ph);
+      pg.addColorStop(0, 'rgba(18,30,60,0.62)'); pg.addColorStop(1, 'rgba(6,10,24,0.5)');
+      D.fillRRect(ctx, px, py, pw, ph, 6, pg, 'rgba(255,255,255,0.35)');
+      ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(px + 6, py + 1, pw - 12, 1);
+      // wrench badge
+      const bgx = px + 13, bgy = py + 13;
+      S.ball(ctx, bgx, bgy, 9, '#2b5aa8');
+      S.tool(ctx, 'wrench', bgx - 7, bgy + 5, -0.8);
+      const temp = L.temp != null ? L.temp : 72;
+      const hot = temp >= 90 ? '#ff6a3a' : temp >= 80 ? '#ffb020' : '#8fd4ff';
+      T.cached(ctx, L.boss ? 'LAST VALVE' : 'FIX THE A/C', px + 26, py + 5, { size: 7, color: '#ffffff', stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, `${temp}°F`, px + pw - 6, py + 5, { size: 6, align: 'right', color: hot, stroke: '#000', strokeWidth: 2 });
+      const done = Math.min(this.waveIdx, totalWaves);
+      for (let i = 0; i < totalWaves; i++) {
+        const cx = px + 29 + i * 9, cyy = py + 18;
+        D.fillRRect(ctx, cx - 3, cyy - 2.5, 7, 5, 1.5, i < done ? '#3cdb3c' : (i === done ? `rgba(255,225,74,${0.5 + 0.4 * Math.sin(this.t * 6)})` : 'rgba(255,255,255,0.14)'), 'rgba(0,0,0,0.6)');
+      }
+      T.cached(ctx, L.boss && this.boss ? 'BEAT THE CONE' : `${done}/${totalWaves} ZONES`, px + 29 + totalWaves * 9 + 2, py + 15, { size: 5, color: '#9fe8ff', stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, 'SCORE', px + 26, py + 28, { size: 5, color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, U.pad(p.score, 7), px + pw - 6, py + 25, { size: 9, align: 'right', color: '#fff', stroke: '#000', strokeWidth: 2 });
+      ctx.restore();
+      // LARGE has no room between the scaled blocks (the pause button lives
+      // there), so the stage line tucks under the tracker, clear of the boss bar.
       if (big) {
         const tw = T.width(ctx, stageLine, 7);
-        D.fillRRect(ctx, W - 14 - Math.max(tw, 120), hb + 3, Math.max(tw, 120) + 8, 20, 3, 'rgba(8,10,22,0.72)', null);
-        T.draw(ctx, stageLine, W - 8, hb + 5, { size: 7, align: 'right', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+        D.fillRRect(ctx, W - 14 - Math.max(tw, 120), hb + 3, Math.max(tw, 120) + 8, 20, 3, 'rgba(8,10,22,0.6)', null);
+        T.cached(ctx, stageLine, W - 8, hb + 5, { size: 7, align: 'right', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
         D.bar(ctx, W - 8 - 120, hb + 16, 120, 3, prog, '#ffe14a', '#333');
-      } else {
-        D.bar(ctx, W / 2 - 60, 36, 120, 3, prog, '#ffe14a', '#333');
-        T.draw(ctx, stageLine, W / 2, 25, { size: 6, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
       }
       const dy = hb - 44;
 
-      // combo — ranks, not a generic "FIGHT"
-      const comboY = (this.boss ? 124 : 52) + dy;
+      // combo: a big fiery "12 HIT COMBO" over the fight, ranks underneath
+      const comboY = (this.boss ? 124 : Math.max(52, logoH + 18)) + dy;
       if (this.bannerT <= 0 && p.comboCount >= 2 && p.comboDisplayT > 0) {
         const pop = 1 + (p.comboPop || 0) * 0.35;
         const rank = (WL.voice && WL.voice.comboRank(p.comboCount)) || '';
         const tool = p.lastToolT > 0 && WL.voice ? (p.lastTool === 'uppercut' ? 'WRENCH POP' : WL.voice.toolName(p.lastTool)) : '';
         ctx.save();
-        ctx.translate(18, comboY);
+        // Center stage, like the concept; with a boss up it moves left, off the cone's face.
+        ctx.translate(this.boss ? 118 : W / 2 + 6, comboY);
         ctx.scale(pop, pop);
-        ctx.fillStyle = 'rgba(255,80,180,0.25)';
-        ctx.fillRect(-2, -2, 90, 24);
-        const col = p.comboCount >= 12 ? '#ff6ed2' : p.comboCount >= 8 ? '#fff680' : '#ffe14a';
-        T.draw(ctx, `${p.comboCount} HITS!`, 0, 0, { size: p.comboCount >= 10 ? 17 : 14, color: col, stroke: '#000', strokeWidth: 5 });
+        drawCombo(ctx, p.comboCount, this.t);
+        let ry = WL.art.has('props') ? 47 : 34;
         if (rank) {
-          D.fillRRect(ctx, 0, 18, T.width(ctx, rank, 7) + 8, 12, 2, 'rgba(0,0,0,0.7)', '#ff7ad4');
-          T.draw(ctx, rank, 4, 20, { size: 7, color: '#ffb3e6', shadow: false });
+          const rw = T.width(ctx, rank, 7) + 10;
+          D.fillRRect(ctx, -rw / 2, ry, rw, 12, 3, 'rgba(40,0,30,0.72)', '#ff7ad4');
+          T.draw(ctx, rank, 0, ry + 2, { size: 7, align: 'center', color: '#ffc4ec', shadow: false });
+          ry += 14;
         }
-        if (tool) T.draw(ctx, tool, 0, rank ? 32 : 18, { size: 6, color: '#ffffff', stroke: '#000', strokeWidth: 3 });
-        if (p.juggleCount > 0) T.draw(ctx, `JUGGLE x${p.juggleCount}`, 0, (rank ? 32 : 18) + (tool ? 10 : 0), { size: 6, color: '#bff4ff', stroke: '#000', strokeWidth: 3 });
+        if (tool) { T.draw(ctx, tool, 0, ry, { size: 6, align: 'center', color: '#ffffff', stroke: '#000', strokeWidth: 3 }); ry += 10; }
+        if (p.juggleCount > 0) T.draw(ctx, `JUGGLE x${p.juggleCount}`, 0, ry, { size: 6, align: 'center', color: '#bff4ff', stroke: '#000', strokeWidth: 3 });
         ctx.restore();
       }
       if (this.bannerT <= 0 && this.cards.length) {
@@ -1189,11 +1439,11 @@
       // boss bar sits under the HUD so thumbs keep the bottom of the screen
       if (this.boss && !this.boss.remove) {
         const b = this.boss;
-        const bw = 268, bx = W / 2 - bw / 2, by = 58 + dy;
+        const bw = 268, bx = W / 2 - bw / 2, by = Math.max(58 + dy, hudFloor + 13);
         const phaseName = b.phase === 1 ? 'SWIRL' : b.phase === 2 ? 'TOPPINGS' : 'MELT';
         const phaseCol = b.phase === 1 ? '#bfefff' : b.phase === 2 ? '#ffe14a' : '#ff6fa8';
         T.draw(ctx, 'GIANT FROYO CONE', W / 2, by - 10, { size: 6, align: 'center', color: '#f9c', stroke: '#000', strokeWidth: 3 });
-        D.bar(ctx, bx, by, bw, 8, b.hp / b.maxHp, b.phase === 3 ? '#e02040' : '#e85a8a', '#3a0a1a');
+        D.arcadeBar(ctx, bx, by, bw, 8, b.hp / b.maxHp, b.hp / b.maxHp, b.phase === 3 ? '#e02040' : '#e85a8a', null, '#3a0a1a');
         // Notches where the next phases begin: you can see a change coming.
         ctx.fillStyle = '#ffffff';
         for (const at of [1 / 3, 2 / 3]) { const nx = Math.round(bx + bw * at); ctx.fillRect(nx - 1, by - 3, 2, 14); }

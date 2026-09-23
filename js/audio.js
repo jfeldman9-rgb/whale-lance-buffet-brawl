@@ -224,8 +224,106 @@ WL.audio = (function () {
     whoosh() { noise({ f0: 1200, f1: 180, dur: 0.28, vol: 0.28, filter: 'lowpass', attack: 0.04 }); },
     waveClear() {
       [659, 880, 1046, 1318].forEach((n, i) => tone({ f0: n, dur: 0.14, delay: i * 0.07, vol: 0.28, type: 'square' }));
+    },
+    /* ---- Story presentation: transitions, stingers, VO placeholders ---- */
+    wipe() { noise({ f0: 400, f1: 3200, dur: 0.32, vol: 0.2, filter: 'bandpass', q: 0.8, attack: 0.08 }); tone({ f0: 180, f1: 90, dur: 0.2, vol: 0.12, type: 'sine', delay: 0.18 }); },
+    tag() { noise({ f0: 900, f1: 4200, dur: 0.12, vol: 0.14, filter: 'bandpass', q: 1.2 }); tone({ f0: 1175, dur: 0.05, vol: 0.1, type: 'triangle', delay: 0.09 }); },
+    impact() {
+      // Cinematic hit accent: sub drop, crunch and a short bright tail. A slam and a hit on the same beat play once.
+      if (!gate('impact', 120)) return;
+      tone({ f0: 70, f1: 30, dur: 0.5, vol: 0.6, type: 'sine' });
+      noise({ f0: 2400, f1: 160, dur: 0.35, vol: 0.45 });
+      brass([98, 147, 196], 0.35, 0.16);
+      duck(0.35, 0.15, 0.5);
+    },
+    stinger(kind) {
+      const k = STINGERS[kind] || STINGERS.stage;
+      k();
+      duck(0.45, 0.35, 0.8);
+    },
+    /** Speech babble for one syllable of a typed line. who: lance | captain | narrator. */
+    babble(who) {
+      if (!gate('babble', 52)) return;
+      const v = VOICES[who] || VOICES.narrator;
+      if (v.tick) { noise({ f0: 5200, f1: 2600, dur: 0.018, vol: 0.05, filter: 'highpass' }); return; }
+      formant(vary(v.f0, 0.12), v.formant, 0.065, v.vol, v.type);
+    },
+    /** Line-start VO chirp: a short wordless grunt in the speaker's register. */
+    voLine(who) {
+      const v = VOICES[who] || VOICES.narrator;
+      if (v.tick) { tone({ f0: 1568, dur: 0.05, vol: 0.06, type: 'triangle' }); tone({ f0: 2093, dur: 0.07, vol: 0.05, type: 'triangle', delay: 0.05 }); return; }
+      v.grunt.forEach(([f0, f1, d, at]) => formant(f0, v.formant, d, v.vol * 1.4, v.type, f1, at));
+      duck(0.7, 0.3, 0.4);
     }
   };
+
+  /* A band-passed buzz reads as a voice more than a bare oscillator does. */
+  function formant(f0, center, dur, vol, type, f1, delay) {
+    if (!ctx || muted) return;
+    const t0 = ctx.currentTime + (delay || 0);
+    const o = ctx.createOscillator(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = type || 'sawtooth';
+    o.frequency.setValueAtTime(f0, t0);
+    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+    bp.type = 'bandpass'; bp.frequency.value = center; bp.Q.value = 2.2;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(bp); bp.connect(g); g.connect(sfxGain);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  /* Detuned saws through an opening low-pass: a synth-brass stab. */
+  function brass(freqs, dur, vol, delay) {
+    if (!ctx || muted) return;
+    const t0 = ctx.currentTime + (delay || 0);
+    const lp = ctx.createBiquadFilter(), g = ctx.createGain();
+    lp.type = 'lowpass'; lp.Q.value = 1.5;
+    lp.frequency.setValueAtTime(500, t0); lp.frequency.exponentialRampToValueAtTime(3200, t0 + 0.06); lp.frequency.exponentialRampToValueAtTime(900, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(vol, t0 + 0.02); g.gain.setValueAtTime(vol, t0 + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    lp.connect(g); g.connect(sfxGain);
+    for (const f of freqs) for (const d of [-6, 6]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = d;
+      o.connect(lp); o.start(t0); o.stop(t0 + dur + 0.05);
+    }
+  }
+  const VOICES = {
+    lance: { f0: 118, formant: 620, vol: 0.2, type: 'sawtooth', grunt: [[150, 104, 0.2, 0]] },
+    captain: { f0: 196, formant: 1050, vol: 0.16, type: 'square', grunt: [[220, 262, 0.1, 0], [262, 208, 0.14, 0.11]] },
+    narrator: { tick: true }
+  };
+  const STINGERS = {
+    alarm() { for (let i = 0; i < 4; i++) tone({ f0: i % 2 ? 660 : 880, dur: 0.2, delay: i * 0.21, vol: 0.13, type: 'square' }); tone({ f0: 80, f1: 40, dur: 0.5, vol: 0.45, type: 'sine' }); },
+    phone() { for (let r = 0; r < 2; r++) for (let i = 0; i < 8; i++) { tone({ f0: 440, dur: 0.028, delay: r * 0.55 + i * 0.05, vol: 0.09, type: 'square' }); tone({ f0: 480, dur: 0.028, delay: r * 0.55 + i * 0.05 + 0.025, vol: 0.09, type: 'square' }); } },
+    arrive() { brass([131, 165, 196], 0.28, 0.16); brass([175, 220, 262], 0.7, 0.18, 0.26); tone({ f0: 150, f1: 40, dur: 0.14, vol: 0.4, type: 'sine', delay: 0.26 }); },
+    crash() { noise({ f0: 6000, f1: 1500, dur: 0.6, vol: 0.4, filter: 'highpass' }); brass([73, 110, 147, 175], 0.6, 0.2); tone({ f0: 60, f1: 28, dur: 0.6, vol: 0.6, type: 'sine' }); },
+    stage() { noise({ f0: 300, f1: 2800, dur: 0.3, vol: 0.2, filter: 'bandpass', attack: 0.1 }); brass([147, 220, 294], 0.5, 0.17, 0.26); tone({ f0: 140, f1: 45, dur: 0.18, vol: 0.45, type: 'sine', delay: 0.26 }); },
+    fixed() { tone({ f0: 110, f1: 440, dur: 0.9, vol: 0.12, type: 'sine' }); noise({ f0: 900, f1: 3500, dur: 1.1, vol: 0.14, filter: 'bandpass', attack: 0.3 }); [1319, 1760].forEach((n, i) => tone({ f0: n, dur: 0.5, delay: 0.75 + i * 0.1, vol: 0.12, type: 'triangle' })); },
+    reveal() { brass([65, 78, 98], 1.1, 0.18); tone({ f0: 52, f1: 40, dur: 1.2, vol: 0.4, type: 'sine' }); [494, 466].forEach((n, i) => tone({ f0: n, dur: 0.4, delay: 0.5 + i * 0.4, vol: 0.07, type: 'triangle' })); },
+    boss() { sfx.bossRoar(); brass([58, 69, 87], 0.9, 0.2, 0.15); },
+    fanfare() { [523, 659, 784].forEach((n, i) => tone({ f0: n, dur: 0.14, delay: i * 0.09, vol: 0.15, type: 'square' })); brass([262, 330, 392, 523], 0.9, 0.16, 0.28); },
+    chill() { noise({ f0: 5000, f1: 1200, dur: 0.8, vol: 0.18, filter: 'highpass', attack: 0.15 }); [2093, 2637, 3136].forEach((n, i) => tone({ f0: n, dur: 0.25, delay: 0.2 + i * 0.08, vol: 0.06, type: 'sine' })); }
+  };
+
+  /* Every cue is traced (name + context time) so a test can tell a silent story from a scored one. */
+  const trace = [];
+  for (const name of Object.keys(sfx)) {
+    const fn = sfx[name];
+    sfx[name] = function () {
+      trace.push({ name: name === 'stinger' ? 'stinger:' + arguments[0] : name, t: ctx ? ctx.currentTime : 0 });
+      if (trace.length > 400) trace.splice(0, 100);
+      return fn.apply(this, arguments);
+    };
+  }
+  let meter = null, meterBuf = null;
+  /** Peak level on the master bus right now (0..1), after mute/volume. */
+  function level() {
+    if (!ctx || !master) return 0;
+    if (!meter) { meter = ctx.createAnalyser(); meter.fftSize = 1024; master.connect(meter); meterBuf = new Float32Array(meter.fftSize); }
+    meter.getFloatTimeDomainData(meterBuf);
+    let p = 0;
+    for (let i = 0; i < meterBuf.length; i++) { const v = Math.abs(meterBuf[i]); if (v > p) p = v; }
+    return p;
+  }
 
   /* ---------- Music: step sequencer ---------- */
   // Songs: { bpm, bass: [midi or 0 ...16 steps], lead: [...], arp: root notes per bar }
@@ -236,10 +334,12 @@ WL.audio = (function () {
     spa: { bpm: 120, bass: [40, 0, 0, 40, 0, 47, 0, 0, 38, 0, 0, 38, 0, 45, 0, 0], lead: [64, 67, 0, 71, 0, 0, 67, 0, 62, 66, 0, 69, 0, 0, 66, 0], kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], snare: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1] },
     freezer: { bpm: 138, bass: [31, 31, 0, 31, 0, 31, 34, 0, 30, 30, 0, 30, 0, 30, 33, 0], lead: [55, 0, 58, 0, 62, 0, 58, 55, 54, 0, 57, 0, 61, 0, 57, 54], kick: [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0], snare: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0] },
     boss: { bpm: 150, bass: [29, 29, 29, 0, 32, 0, 29, 0, 27, 27, 27, 0, 30, 0, 28, 0], lead: [53, 0, 56, 60, 0, 56, 53, 0, 51, 0, 54, 58, 0, 54, 51, 0], kick: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0], snare: [0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1] },
+    // Story bed: slower, half-time drums so VO chirps and stingers sit on top.
+    story: { bpm: 92, bass: [33, 0, 0, 33, 0, 0, 40, 0, 38, 0, 0, 38, 0, 0, 36, 35], lead: [69, 0, 0, 0, 72, 0, 71, 0, 67, 0, 0, 0, 64, 0, 0, 0], kick: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0], snare: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0] },
     victory: { bpm: 100, bass: [36, 0, 43, 0, 41, 0, 43, 0, 36, 0, 43, 0, 45, 0, 43, 0], lead: [67, 0, 72, 0, 76, 0, 74, 72, 67, 0, 72, 0, 77, 0, 76, 74], kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0], snare: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0] }
   };
 
-  let song = null, songName = null, step = 0, nextTime = 0, timer = null;
+  let song = null, songName = null, step = 0, nextTime = 0, timer = null, requested = null;
   const midi = m => 440 * Math.pow(2, (m - 69) / 12);
 
   function scheduleStep(t) {
@@ -266,23 +366,28 @@ WL.audio = (function () {
   }
 
   function playMusic(name) {
+    requested = name;
     init();
     if (!ctx) return;
     if (songName === name && timer) return;
     stopMusic();
+    requested = name;
     song = SONGS[name]; songName = name; step = 0;
     nextTime = ctx.currentTime + 0.05;
     timer = setInterval(tick, 50);
   }
   function stopMusic() {
     if (timer) clearInterval(timer);
-    timer = null; song = null; songName = null;
+    timer = null; song = null; songName = null; requested = null;
   }
 
   return {
     init, unlock, sfx, playMusic, stopMusic, toggleMute, setMuted, setVolume, cycleVolume, volumeLabel,
-    duck, setMusicLevel, cycleMusic, musicLabel,
+    duck, setMusicLevel, cycleMusic, musicLabel, level, trace,
     get muted() { return muted; }, get unlocked() { return unlocked; }, get volume() { return volume; },
-    get musicLevel() { return musicLevel; }
+    get musicLevel() { return musicLevel; },
+    /** The song the game asked for (set even when WebAudio is unavailable). */
+    get song() { return requested; },
+    get playing() { return !!timer && !!song; }
   };
 })();

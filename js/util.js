@@ -8,6 +8,8 @@ WL.H = 360;
 WL.FLOOR_TOP = 205;     // highest walkable foot position (far)
 WL.FLOOR_BOTTOM = 345;  // lowest walkable foot position (near)
 WL.FONT = "'Press Start 2P', 'Courier New', monospace";
+// Story dialogue: a heavy sans that stays readable in long lines at 1080p.
+WL.FONT_UI = "'Trebuchet MS', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Liberation Sans', sans-serif";
 
 /* Display presentation. main.js fills renderScale / pc / dpr from the window.
    mode: 'auto' (device pixels on every screen, up to 4K),
@@ -20,6 +22,82 @@ WL.display = {
   dpr: 1,
   fullscreen: false,
   resize: null
+};
+
+/* World light for the current stage. side: +1 = key light from screen right.
+   Sprites flip with ctx.scale(-1, 1), so they use side * facing locally.
+   cast: opacity of the hard sun shadow (0 = overhead / soft only). */
+WL.light = {
+  side: 1, cast: 0.3, gloss: 0, key: 'rgba(255,244,210,0.55)', rim: 'rgba(255,250,225,0.9)', shade: 'rgba(40,18,60,0.26)',
+  set(o) { Object.assign(this, { side: 1, cast: 0.3, gloss: 0, key: 'rgba(255,244,210,0.55)', rim: 'rgba(255,250,225,0.9)', shade: 'rgba(40,18,60,0.26)' }, o || {}); }
+};
+
+/* Offscreen layer cache. Static art (skyline, deck tiles, loungers) is
+   painted once per render scale and blitted, instead of re-running hundreds
+   of path ops per frame on a 4K backing store. maxScale caps resolution:
+   distant layers are cached softer on purpose, which reads as depth of field. */
+WL.gfx = {
+  _c: {},
+  scale(maxScale) {
+    const rs = WL.display.mode === 'classic' ? 1 : (WL.display.renderScale || 1);
+    return Math.max(1, Math.min(rs, maxScale || rs));
+  },
+  /** blur (world px) softens distant layers once at paint time, for depth of field. */
+  layer(key, w, h, maxScale, paint, blur) {
+    const s = this.scale(maxScale);
+    let e = this._c[key];
+    if (!e || e.s !== s) {
+      const make = () => {
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.ceil(w * s)); c.height = Math.max(1, Math.ceil(h * s));
+        return c;
+      };
+      let c = make();
+      const g = c.getContext('2d');
+      g.setTransform(s, 0, 0, s, 0, 0);
+      g.imageSmoothingEnabled = true;
+      paint(g, w, h);
+      if (blur && WL.display.mode !== 'classic' && 'filter' in g) {
+        const out = make();
+        const o = out.getContext('2d');
+        o.filter = `blur(${(blur * s).toFixed(2)}px)`;
+        o.drawImage(c, 0, 0);
+        c = out;
+      }
+      e = this._c[key] = { c, s, w, h };
+    }
+    return e;
+  },
+  snap(v) {
+    const rs = WL.display.mode === 'classic' ? 1 : (WL.display.renderScale || 1);
+    return Math.round(v * rs) / rs;
+  },
+  /* A layer cached at the live render scale is copied 1:1 onto device
+     pixels with smoothing off: a plain blit, no resampling. Softer layers
+     are stretched with bilinear ('low') filtering, which is far cheaper than
+     the 'high' quality the main context uses for sprites. */
+  _begin(ctx, e) {
+    const rs = WL.display.mode === 'classic' ? 1 : (WL.display.renderScale || 1);
+    const exact = Math.abs(e.s - rs) < 1e-6;
+    this._sm = ctx.imageSmoothingEnabled; this._q = ctx.imageSmoothingQuality;
+    if (exact) ctx.imageSmoothingEnabled = false;
+    else { ctx.imageSmoothingEnabled = WL.display.mode !== 'classic'; ctx.imageSmoothingQuality = 'low'; }
+    return exact ? { w: e.c.width / rs, h: e.c.height / rs } : { w: e.w + 1 / rs, h: e.h };
+  },
+  _end(ctx) { ctx.imageSmoothingEnabled = this._sm; ctx.imageSmoothingQuality = this._q; },
+  blit(ctx, e, x, y) {
+    const d = this._begin(ctx, e);
+    ctx.drawImage(e.c, this.snap(x), this.snap(y), d.w, d.h);
+    this._end(ctx);
+  },
+  /** Repeat a seamless tile horizontally; scroll = world offset in px. */
+  tile(ctx, e, scroll, y) {
+    let x = -(((scroll % e.w) + e.w) % e.w);
+    const d = this._begin(ctx, e);
+    const sy = this.snap(y);
+    for (; x < WL.W; x += e.w) ctx.drawImage(e.c, this.snap(x), sy, d.w, d.h);
+    this._end(ctx);
+  }
 };
 
 const U = WL.util = {
@@ -59,7 +137,7 @@ WL.text = {
   draw(ctx, str, x, y, opts = {}) {
     const size = opts.size || 8;
     ctx.save();
-    ctx.font = `${size}px ${WL.FONT}`;
+    ctx.font = WL.text.font(size, opts);
     ctx.textAlign = opts.align || 'left';
     ctx.textBaseline = opts.baseline || 'top';
     if (opts.shadow !== false) {
@@ -83,17 +161,40 @@ WL.text = {
     ctx.fillText(str, x, y);
     ctx.restore();
   },
-  width(ctx, str, size) {
+  /** Same as draw(), but the stroked glyphs are rasterized once into a small
+     bitmap and blitted afterwards. For HUD labels that repeat every frame. */
+  cached(ctx, str, x, y, opts = {}) {
+    const size = opts.size || 8;
+    const key = str + '|' + size + '|' + (opts.color || '') + '|' + (opts.gradient || '') + '|' + (opts.stroke || '') + '|' + (opts.strokeWidth || '') + '|' + (opts.shadow === false ? 0 : 1);
+    const cache = this._cache || (this._cache = new Map());
+    if (cache.size > 160) cache.clear();
+    let e = cache.get(key);
+    const s = WL.gfx.scale();
+    if (!e || e.s !== s) {
+      const pad = Math.ceil((opts.stroke ? (opts.strokeWidth || Math.max(2, size / 4)) : 0) / 2 + Math.max(1, size / 8) + 1);
+      const w = Math.ceil(this.width(ctx, str, size)) + pad * 2, h = Math.ceil(size * 1.25) + pad * 2;
+      e = WL.gfx.layer('txt' + key, w, h, undefined, g => this.draw(g, str, pad, pad, Object.assign({}, opts, { align: 'left' })));
+      e = { c: e.c, s: e.s, w: e.w, h: e.h, pad };
+      delete WL.gfx._c['txt' + key];
+      cache.set(key, e);
+    }
+    const tw = e.w - e.pad * 2;
+    const ax = opts.align === 'center' ? x - tw / 2 : opts.align === 'right' ? x - tw : x;
+    WL.gfx.blit(ctx, e, ax - e.pad, y - e.pad);
+  },
+  /** opts.ui = the dialogue face; opts.weight = CSS weight (ui only). */
+  font(size, opts) { return opts && opts.ui ? `${opts.weight || 700} ${size}px ${WL.FONT_UI}` : `${size}px ${WL.FONT}`; },
+  width(ctx, str, size, opts) {
     ctx.save();
-    ctx.font = `${size}px ${WL.FONT}`;
+    ctx.font = this.font(size, opts);
     const w = ctx.measureText(str).width;
     ctx.restore();
     return w;
   },
   // Word-wrap into lines that fit maxWidth
-  wrap(ctx, str, size, maxWidth) {
+  wrap(ctx, str, size, maxWidth, opts) {
     ctx.save();
-    ctx.font = `${size}px ${WL.FONT}`;
+    ctx.font = this.font(size, opts);
     const words = str.split(' ');
     const lines = [];
     let line = '';
@@ -150,7 +251,8 @@ WL.draw = {
     ctx.lineWidth = w || 1;
     ctx.stroke();
   },
-  shadow(ctx, x, y, rx, ry, z) {
+  /** noCast: the caller draws its own silhouette cast shadow (painted sprites). */
+  shadow(ctx, x, y, rx, ry, z, noCast) {
     const s = Math.max(0.25, 1 - (z || 0) / 160);
     const srx = rx * s;
     const sry = (ry || rx * 0.35) * s;
@@ -160,6 +262,17 @@ WL.draw = {
     const spr = WL.draw._shadowSprite();
     if (spr) {
       const a0 = ctx.globalAlpha;
+      const L = WL.light;
+      // Hard-edged cast shadow thrown away from the sun, under the soft contact blob.
+      if (L.cast > 0 && !WL.perf.lite && !(noCast && WL.display.mode !== 'classic')) {
+        const hard = WL.draw._hardShadowSprite();
+        if (hard) {
+          const len = (1.2 + (z || 0) / 90) * srx;
+          const cx = x - L.side * len * 0.55 + (z || 0) * -L.side * 0.2;
+          ctx.globalAlpha = a0 * L.cast * s;
+          ctx.drawImage(hard, cx - len, y - sry * 0.9, len * 2, sry * 1.8);
+        }
+      }
       ctx.globalAlpha = a0 * a;
       ctx.drawImage(spr, x - srx, y - sry, srx * 2, sry * 2);
       ctx.globalAlpha = a0;
@@ -193,6 +306,25 @@ WL.draw = {
     } catch (e) { this._shadow = null; }
     return this._shadow;
   },
+  _hardShadowSprite() {
+    if (this._hard !== undefined) return this._hard;
+    this._hard = null;
+    try {
+      const c = document.createElement('canvas');
+      c.width = 64; c.height = 32;
+      const g = c.getContext('2d');
+      const grad = g.createRadialGradient(32, 16, 0, 32, 16, 32);
+      grad.addColorStop(0, 'rgba(20,10,30,1)');
+      grad.addColorStop(0.78, 'rgba(20,10,30,0.92)');
+      grad.addColorStop(0.92, 'rgba(20,10,30,0.35)');
+      grad.addColorStop(1, 'rgba(20,10,30,0)');
+      g.setTransform(1, 0, 0, 0.5, 0, 0);
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 64);
+      this._hard = c;
+    } catch (e) { this._hard = null; }
+    return this._hard;
+  },
   /** Diagonal stripes: a shape cue for "low" that doesn't rely on hue. */
   hatch(ctx, x, y, w, h, color) {
     if (w <= 0 || h <= 0) return;
@@ -221,67 +353,59 @@ WL.draw = {
   arcadeBar(ctx, x, y, w, h, pct, ghostPct, fg, ghostCol, bg) {
     pct = U.clamp(pct, 0, 1);
     ghostPct = U.clamp(ghostPct !== undefined ? ghostPct : pct, pct, 1);
-    ctx.fillStyle = '#06060c';
-    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
-    ctx.fillStyle = '#222638';
-    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-    ctx.fillStyle = bg || '#1e080a';
-    ctx.fillRect(x, y, w, h);
+    const r = Math.min(h / 2 + 2, 6);
+    // Brushed-metal bezel, then a recessed glass track.
+    const bez = ctx.createLinearGradient(0, y - 3, 0, y + h + 3);
+    bez.addColorStop(0, '#f3f5f8'); bez.addColorStop(0.45, '#8f97a6'); bez.addColorStop(1, '#3b4150');
+    WL.draw.rrect(ctx, x - 3, y - 3, w + 6, h + 6, r + 2); ctx.fillStyle = '#0b0d16'; ctx.fill();
+    WL.draw.rrect(ctx, x - 2, y - 2, w + 4, h + 4, r + 1); ctx.fillStyle = bez; ctx.fill();
+    ctx.save();
+    WL.draw.rrect(ctx, x, y, w, h, r); ctx.clip();
+    ctx.fillStyle = bg || '#1e080a'; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(x, y, w, Math.max(1, h * 0.3));
     if (ghostPct > 0) {
-      const gw = Math.max(1, Math.round(w * ghostPct));
       ctx.fillStyle = ghostCol || '#ffaa33';
-      ctx.fillRect(x, y, gw, h);
+      ctx.fillRect(x, y, Math.max(1, Math.round(w * ghostPct)), h);
     }
     if (pct > 0) {
       const bw = Math.max(1, Math.round(w * pct));
       ctx.fillStyle = fg;
       ctx.fillRect(x, y, bw, h);
-      ctx.fillStyle = 'rgba(255,255,255,0.42)';
-      ctx.fillRect(x, y, bw, Math.max(1, Math.floor(h * 0.35)));
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.fillRect(x, y + Math.floor(h * 0.7), bw, Math.ceil(h * 0.3));
+      const gl = ctx.createLinearGradient(0, y, 0, y + h);
+      gl.addColorStop(0, 'rgba(255,255,255,0.62)');
+      gl.addColorStop(0.42, 'rgba(255,255,255,0.12)');
+      gl.addColorStop(0.55, 'rgba(0,0,0,0.05)');
+      gl.addColorStop(1, 'rgba(0,0,0,0.38)');
+      ctx.fillStyle = gl; ctx.fillRect(x, y, bw, h);
+      // Hot leading edge.
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(x + bw - 1.5, y + 1, 1.5, h - 2);
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    for (let p = 0.2; p < 0.99; p += 0.2) {
-      const tx = Math.round(x + w * p);
-      ctx.fillRect(tx, y, 1, h);
-    }
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    for (let p = 0.1; p < 0.99; p += 0.1) ctx.fillRect(Math.round(x + w * p), y + h * 0.5, 1, h * 0.5);
+    ctx.restore();
   },
+  // [rgb, mid stop, mid alpha, edge alpha, pulse boost]
+  VIGNETTE: { 1: ['30,14,6', 0.75, 0.08, 0.26, 0.2], 2: ['5,15,22', 0.7, 0.32, 0.62, 0.25], 3: ['10,35,30', 0.7, 0.22, 0.52, 0.25], 4: ['10,20,45', 0.7, 0.32, 0.65, 0.25] },
   stageLighting(ctx, stageId, pulse, t) {
-    ctx.save();
-    pulse = U.clamp(pulse || 0, 0, 1);
     const W = WL.W, H = WL.H;
+    pulse = U.clamp(pulse || 0, 0, 1);
+    const V = this.VIGNETTE[stageId];
+    if (!V) return;
+    ctx.save();
     const vig = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.75);
-    if (stageId === 1) {
-      vig.addColorStop(0, 'rgba(255,240,200,0)');
-      vig.addColorStop(0.7, 'rgba(30,15,5,0.22)');
-      vig.addColorStop(1, `rgba(15,8,3,${0.5 + pulse * 0.25})`);
-      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
-      const sun = ctx.createLinearGradient(0, 0, 0, 95);
-      sun.addColorStop(0, 'rgba(255,230,140,0.14)');
-      sun.addColorStop(1, 'rgba(255,230,140,0)');
-      ctx.fillStyle = sun; ctx.fillRect(0, 0, W, 95);
-    } else if (stageId === 2) {
-      vig.addColorStop(0, 'rgba(0,20,30,0)');
-      vig.addColorStop(0.7, 'rgba(5,15,22,0.32)');
-      vig.addColorStop(1, `rgba(2,8,14,${0.62 + pulse * 0.25})`);
-      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+    vig.addColorStop(0, `rgba(${V[0]},0)`);
+    vig.addColorStop(V[1], `rgba(${V[0]},${V[2]})`);
+    vig.addColorStop(1, `rgba(${V[0]},${V[3] + pulse * V[4]})`);
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+    if (stageId === 2) {
       if (Math.sin((t || 0) * 2) > 0) {
         ctx.fillStyle = 'rgba(255,140,20,0.03)';
         ctx.fillRect(0, 0, W, H);
       }
     } else if (stageId === 3) {
-      vig.addColorStop(0, 'rgba(200,255,245,0)');
-      vig.addColorStop(0.7, 'rgba(10,35,30,0.22)');
-      vig.addColorStop(1, `rgba(4,18,16,${0.52 + pulse * 0.25})`);
-      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(60,200,180,0.035)';
       ctx.fillRect(0, 0, W, H);
     } else if (stageId === 4) {
-      vig.addColorStop(0, 'rgba(210,240,255,0)');
-      vig.addColorStop(0.7, 'rgba(10,20,45,0.32)');
-      vig.addColorStop(1, `rgba(4,10,28,${0.65 + pulse * 0.25})`);
-      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(140,210,255,0.05)';
       ctx.fillRect(0, 0, W, H);
     }

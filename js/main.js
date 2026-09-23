@@ -40,45 +40,37 @@
     _swap() {
       if (this.scene && this.scene.exit) this.scene.exit();
       this.scene = this.nextScene; this.nextScene = null;
+      this.sceneAt = performance.now();
       if (this.scene.enter) this.scene.enter();
     },
     /* ---- flow ---- */
     toTitle() { WL.audio.stopMusic(); this.setScene(new WL.scenes.Title(this)); },
+    /** A stage's intro beat, scored with the stage's own song. */
+    introBeat(idx) { const L = WL.LEVELS[idx]; return L.intro && Object.assign({ music: L.music }, L.intro); },
     startNewGame(withIntro) {
-      if (withIntro) this.setScene(new WL.scenes.Cutscene(this, WL.OPENING, () => this.startLevel(0, {}), 'title'));
+      // The opening runs straight into the Lido intro, then the fight.
+      if (withIntro) this.setScene(new WL.scenes.Cutscene(this, WL.OPENING.concat([this.introBeat(0)]), () => this.setScene(new WL.scenes.Play(this, 0, {})), 'story'));
       else this.startLevel(0, {});
     },
     startLevel(idx, carry) {
-      const L = WL.LEVELS[idx];
-      const temps = [94, 88, 81, 75, 72];
-      if (L.intro) {
-        this.setScene(new WL.scenes.StoryBeat(this, {
-          title: L.intro.title, lines: L.intro.lines, tempFrom: temps[idx], tempTo: temps[idx], palette: L.palette, pose: 'carry',
-          onDone: () => this.setScene(new WL.scenes.Play(this, idx, carry))
-        }));
+      const intro = this.introBeat(idx);
+      if (intro) {
+        this.setScene(new WL.scenes.StoryBeat(this, { beats: [intro], onDone: () => this.setScene(new WL.scenes.Play(this, idx, carry)) }));
       } else this.setScene(new WL.scenes.Play(this, idx, carry));
     },
     levelComplete(idx, player) {
       const L = WL.LEVELS[idx];
       const carry = { score: player.score, lives: player.lives, fart: player.fart };
-      const temps = [94, 88, 81, 75, 72];
       if (L.boss) { WL.settings.clearRun(); this.showEnding(player.score); return; }
       WL.settings.saveRun({ level: idx + 1, wave: 0, score: player.score, fart: Math.round(player.fart) });
+      // Repair log, then the next deck's intro, in one reel.
       this.setScene(new WL.scenes.StoryBeat(this, {
-        title: 'A/C REPAIR LOG', lines: L.outro.lines, tempFrom: temps[idx], tempTo: temps[idx + 1], palette: L.palette, pose: 'victory',
-        onDone: () => this.startLevel(idx + 1, carry)
+        beats: [L.outro, this.introBeat(idx + 1)], music: 'story',
+        onDone: () => this.setScene(new WL.scenes.Play(this, idx + 1, carry))
       }));
     },
     showEnding(score) {
-      const beats = WL.ENDING;
-      let i = 0;
-      const next = () => {
-        if (i >= beats.length) { this.setScene(new WL.scenes.Victory(this, score)); return; }
-        const b = beats[i++];
-        this.setScene(new WL.scenes.StoryBeat(this, { title: i === 1 ? 'THE LAST VALVE' : 'EPILOGUE', lines: b.lines, tempFrom: i === 1 ? 75 : 72, tempTo: 72, palette: '#8fb6dc', pose: 'victory', thin: i > 1, onDone: next }));
-      };
-      WL.audio.playMusic('victory');
-      next();
+      this.setScene(new WL.scenes.StoryBeat(this, { beats: WL.ENDING, music: 'victory', onDone: () => this.setScene(new WL.scenes.Victory(this, score)) }));
     },
     gameOver(levelIndex, score, wave) { this.setScene(new WL.scenes.GameOver(this, levelIndex, score, wave)); },
     /** Continue after a wipe: same stage, from `wave` (0 = stage start). Half score, 3 lives. */
@@ -229,9 +221,22 @@
     document.fonts.load(`8px ${WL.FONT}`).catch(() => {}),
     new Promise(resolve => setTimeout(resolve, 1500))
   ]) : Promise.resolve();
+  let artMissing = [];
   Promise.all([WL.assets.load(p => { progress = p; }), fontReady]).then(() => {
+    artMissing = WL.assets.criticalMissing();
     loading = false; game.setScene(new WL.scenes.Title(game));
   });
+  /* Missing painted art still plays (procedural fallback) but must never look intentional. */
+  function drawArtWarning() {
+    const onTitle = game.scene instanceof WL.scenes.Title;
+    if (!onTitle && performance.now() - (game.sceneAt || 0) > 12000) return;
+    const T = WL.text, D = WL.draw;
+    const list = artMissing.length <= 2 ? artMissing.map(k => k.split(':')[1]).join(', ') : artMissing.length + ' FILES (SEE CONSOLE)';
+    const w = 300, x = W / 2 - w / 2, y = 96;
+    D.fillRRect(ctx, x, y, w, 30, 4, 'rgba(120,0,0,0.88)', '#ffd23f');
+    T.draw(ctx, 'PAINTED ART FAILED TO LOAD', W / 2, y + 5, { size: 8, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+    T.draw(ctx, 'HARD REFRESH (CTRL+SHIFT+R)  MISSING: ' + list.toUpperCase(), W / 2, y + 18, { size: 4.5, align: 'center', color: '#fff', shadow: false });
+  }
 
   /* ---- loop ---- */
   let last = performance.now();
@@ -270,6 +275,7 @@
       if (game.fadeDir !== 1) game.scene.update(dt, WL.input);
       game.scene.draw(ctx);
     }
+    if (!loading && artMissing.length && game.scene) drawArtWarning();
     if (game.fade > 0) { ctx.fillStyle = `rgba(0,0,0,${game.fade})`; ctx.fillRect(0, 0, W, H); }
     if (WL.audio.muted) WL.text.draw(ctx, 'MUTE', W - 6, H - 10, { size: 6, align: 'right', color: '#aaa' });
     if (window.location.hash === '#fps') {

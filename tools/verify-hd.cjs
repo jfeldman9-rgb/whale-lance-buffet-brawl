@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { createCanvas, Image, GlobalFonts } = require('@napi-rs/canvas');
 const root = process.argv[2] || require('node:path').resolve(__dirname, '..');
 GlobalFonts.registerFromPath(root + '/assets/fonts/press-start-2p.ttf', 'Press Start 2P');
+function scriptList(){return [...fs.readFileSync(root+'/index.html','utf8').matchAll(/<script src="js\/(\w+)\.js/g)].map(m=>m[1])}
 function memStore(){const m=new Map();return{getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k),_m:m}}
 function boot(width,height,dpr,coarse,storage){
   const listeners = {}, clisteners = {}, dl = {}, canvas = createCanvas(640,360);
@@ -15,9 +16,9 @@ function boot(width,height,dpr,coarse,storage){
     addEventListener:(k,fn)=>(listeners[k]??=[]).push(fn),navigator:{maxTouchPoints:coarse?5:0,getGamepads:()=>[]},
     localStorage:storage||memStore(),location:{hash:''},requestAnimationFrame:fn=>context.frame=fn,
     document:{getElementById:()=>canvas,createElement:()=>createCanvas(1,1),addEventListener:(k,fn)=>(dl[k]??=[]).push(fn),fonts:{load:()=>Promise.resolve()}},
-    Image:class{set src(src){try{const im=new Image();im.src=fs.readFileSync(root+'/'+src);this.width=im.width;this.height=im.height;this.onload?.()}catch{this.onerror?.()}}}
+    Image:class{set src(src){try{const im=new Image();im.src=fs.readFileSync(root+'/'+src.split('?')[0]);this.width=im.width;this.height=im.height;this.onload?.()}catch{this.onerror?.()}}}
   };context.window=context;vm.createContext(context);
-  for(const f of ['util','settings','assets','input','audio','voice','sprites','entities','levels','options','scenes','main'])vm.runInContext(fs.readFileSync(root+'/js/'+f+'.js','utf8'),context,{filename:f+'.js'});
+  for(const f of scriptList())vm.runInContext(fs.readFileSync(root+'/js/'+f+'.js','utf8'),context,{filename:f+'.js'});
   // Images above test loading/fallback, not cutscene raster composition.
   context.WL.assets.get=()=>null;
   return {context,canvas,listeners,clisteners,dl,WL:context.WL};
@@ -242,4 +243,64 @@ const freshPlay=(WL,i,carry)=>{const s=new WL.scenes.Play(WL.game,i,carry||{});s
   const t=new WL.scenes.Title(WL.game);t.sel=t.items.findIndex(i=>i.id==='settings');t.choose();t.draw(ctx);
   assert.ok(JSON.parse(store.getItem('wl-settings')).overlay!==0.55,'overlay change saved');
   console.log('PASS large HUD + colorblind render; pause Options/Controls panels; title Settings');
+}
+// 11. Story reels: painted plates on disk, every card readable inside ~3 s, every beat scored, press/skip flow.
+{
+  const env=boot(1920,1080,1,false);const {WL}=env;const ctx=env.canvas.getContext('2d');const A=WL.audio;
+  const beats=[...WL.OPENING,...WL.LEVELS.flatMap(L=>[L.intro,L.outro]).filter(Boolean),...WL.ENDING];
+  assert.equal(beats.length,4+7+3,'4 opening, 7 stage intro/outro, 3 ending beats');
+  for(const b of beats){
+    assert.ok(fs.existsSync(root+'/assets/cutscenes/'+b.plate+'.webp'),'plate ships: '+b.plate);
+    assert.ok(b.sting&&b.lines.length&&b.kicker,'beat has a stinger, lines and a location card: '+b.plate);
+    const tl=WL.cinema.timeline(b);
+    const firstCue=Math.min(0.5,...(b.tags||[]).map(g=>g.at),b.slam&&!b.slam.end?b.slam.at:9);
+    assert.ok(firstCue<=1.5&&tl.lines[0].start<=1,'who/where lands in under 1.5 s and dialogue by 1 s: '+b.plate);
+    assert.ok(b.cam&&b.cam.length===6&&b.cam[2]>=1&&b.cam[5]>=1,'camera move never shows plate edges: '+b.plate);
+    for(const l of tl.lines)assert.ok(['lance','captain','narrator'].includes(l.who));
+  }
+  assert.ok(fs.existsSync(root+'/assets/cutscenes/captain-portrait.webp'));
+  assert.ok(WL.assets.STORY.every(n=>fs.existsSync(root+'/assets/cutscenes/'+n+'.webp')),'every lazy story key has a file');
+  const idle={pressed:{},axis:()=>({x:0,y:0})};
+  const run=(scene,secs,drawEvery)=>{for(let f=0;f<secs*60&&!scene.done;f++){scene.update(1/60,idle);if(drawEvery&&f%drawEvery===0)scene.draw(ctx)}};
+  // Opening runs itself (no input) through the Lido intro, then the fight.
+  A.trace.length=0;
+  WL.game.startNewGame(true);WL.game._swap();
+  const cut=WL.game.scene;assert.ok(cut instanceof WL.scenes.Cutscene);assert.equal(cut.beats.length,5);
+  assert.equal(A.song,'story','music bed starts with the opening');
+  const perBeat=[];let last=-1;
+  for(let f=0;f<60*120&&!cut.done;f++){
+    if(cut.i!==last){last=cut.i;perBeat.push({i:cut.i,from:A.trace.length})}
+    cut.update(1/60,idle);if(f%45===0)cut.draw(ctx);
+    if(f===330&&process.env.WL_CAPTURE_DIR)fs.writeFileSync(process.env.WL_CAPTURE_DIR+'/wl-story-fallback.png',env.canvas.toBuffer('image/png'));
+  }
+  assert.ok(cut.done,'opening finishes on its own');
+  assert.ok(WL.game.nextScene instanceof WL.scenes.Play&&WL.game.nextScene.level===WL.LEVELS[0],'opening hands over to stage 1');
+  assert.equal(A.song,'lido','stage 1 intro switches to the stage song');
+  perBeat.forEach((p,k)=>{
+    const cues=A.trace.slice(p.from,(perBeat[k+1]||{from:A.trace.length}).from).map(c=>c.name);
+    assert.ok(cues.some(n=>n.startsWith('stinger:')),'beat '+(k+1)+' plays a stinger');
+    assert.ok(cues.includes('voLine')&&cues.includes('babble'),'beat '+(k+1)+' has VO chirps: '+[...new Set(cues)].join(','));
+  });
+  // Presses: finish typing, next line, next beat; pause skips the reel.
+  const press=o=>({pressed:o,axis:()=>({x:0,y:0})});
+  let done=0;const reel=new WL.scenes.Cutscene(WL.game,WL.OPENING,()=>done++,'story');reel.enter();reel.waiting=false;
+  run(reel,1.0);const L0=reel.tl.lines[0];assert.ok(reel.t<L0.typed);
+  reel.update(1/60,press({attack:true}));assert.ok(reel.t>=L0.typed,'first press finishes the line');
+  reel.update(1/60,press({attack:true}));assert.equal(reel.currentLine(),1,'second press goes to the next line');
+  reel.update(1/60,press({start:true}));reel.update(1/60,press({start:true}));assert.equal(reel.i,1,'then the next beat');
+  assert.ok(reel.trans&&reel.trans.via,'beats change through a transition, not a hard cut');
+  for(let k=0;k<3;k++)reel.draw(ctx),reel.update(0.2,idle);
+  reel.update(1/60,press({pause:true}));assert.equal(done,1,'pause skips the reel');
+  const skip=new WL.scenes.Cutscene(WL.game,WL.OPENING,()=>done++);skip.enter();skip.waiting=false;run(skip,0.5);
+  skip.update(1/60,{pressed:{click:true,start:true},pointer:{x:630,y:10},axis:()=>({x:0,y:0})});assert.equal(done,2,'SKIP chip click skips');
+  // Stage clear: repair log then the next deck's intro in one reel, then the fight.
+  WL.game.levelComplete(0,{score:1000,lives:3,fart:10});WL.game._swap();
+  const sb=WL.game.scene;assert.ok(sb instanceof WL.scenes.StoryBeat);assert.equal(sb.beats.map(b=>b.plate).join(),'st1-lido-outro,st2-plant-intro');
+  assert.equal(A.song,'story');run(sb,60,30);assert.ok(sb.done&&WL.game.nextScene instanceof WL.scenes.Play);assert.equal(A.song,'plant');
+  // Ending: three beats to the victory screen, scored with the victory song.
+  WL.game.showEnding(5000);WL.game._swap();const end=WL.game.scene;assert.equal(end.beats.length,3);assert.equal(A.song,'victory');
+  run(end,90,30);assert.ok(end.done&&WL.game.nextScene instanceof WL.scenes.Victory);
+  // Classic 640x360 draws the reel too.
+  WL.display.setMode('classic');const cl=new WL.scenes.StoryBeat(WL.game,{beats:[WL.STORY.st3Intro]});cl.enter();cl.waiting=false;run(cl,2);cl.draw(ctx);WL.display.setMode('auto');
+  console.log(`PASS story: ${beats.length} painted beats on disk, who/where under 1.5 s, stinger + VO per beat, music bed, press/skip, stage + ending flow`);
 }
