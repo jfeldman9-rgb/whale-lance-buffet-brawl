@@ -12,6 +12,8 @@ During a stage the control picture stays on screen the whole time, on phones and
 
 The upgrade pass adds fairer hitboxes and invulnerability frames, readable boss telegraphs, Continue from the current stage and wave, keyboard and gamepad remapping, a timed launcher/juggle, a music-ducking audio mix, pooled particles with a phone budget, a large HUD and colorblind-safe health, smarter enemy AI, and settings that survive a reload.
 
+The concept-art pass pushes the picture toward the key art: a sunlit Lido deck (Diamond Head, the Waikiki skyline, sailboats, the Pride of America superstructure, a pool deck with tourists, buffet signage, polished teak, HOT FOOD caution signs), side-lit characters with rim light and hard cast shadows, a fight face for Lance, KALE RAGE and CRUNCH CREW goons, food-and-kitchenware debris that bounces on the deck, glow hit sparks, and a HUD with a round portrait, a long glossy HP bar, hard-hat lives, the logo and a FIX THE A/C tracker. See [Graphics](#graphics).
+
 ## Play
 
 **Online:** enable GitHub Pages for this repo (Settings → Pages → *Deploy from a branch* → `main`, folder `/ (root)`) and open the published URL.
@@ -147,7 +149,8 @@ js/options.js         Options / Controls panels shared by the title and pause me
 js/scenes.js          title, cutscene player, story beats, Play/HUD, pause, game over, ending
 js/main.js            bootstrap, scaling, game loop, scene flow
 assets/cutscenes/     opening cutscene panels (cutscene-01..04)
-tools/                make_lance_portraits.py: turns a real photo into the optional likeness PNGs
+tools/                make_lance_portraits.py: turns a real photo into the optional likeness PNGs;
+                      verify-hd.cjs / capture-gfx.cjs / soak.cjs: regression, visual smoke, bot soak
 ```
 
 ### Swapping in art
@@ -165,8 +168,9 @@ The loader looks for these exact files; drop replacements in with the same names
 ### Lance's likeness
 
 Lance is drawn entirely in code (`drawLance`, `lanceHead`, `drawLanceBust` in `js/sprites.js`) to match the
-reference photos: thinning white hair combed back, prominent white mustache, tan/ruddy complexion, red polo with a
-purple-and-white lei, gray cargo shorts, black sneakers, and a mechanic's tool belt worn over the polo. No AI-generated
+reference photos: thinning white hair combed back, prominent white mustache, tan/ruddy complexion, a red shirt (now
+with a tone-on-tone hibiscus print and an open camp collar) with a purple-and-white plumeria lei, gray cargo shorts,
+black sneakers, and a leather mechanic's tool belt worn over the shirt. No AI-generated
 composites are used; the three `assets/lance/*.png` files are **optional** and the repo ships without them.
 
 To use crops of the real photos instead of the drawn head, run:
@@ -190,13 +194,25 @@ WL.game.debug.invuln()    // toggle invulnerability on
 
 Add `#fps` to the URL to show a frame counter.
 
+## Graphics
+
+Everything is still drawn with Canvas 2D at runtime; there are no sprite sheets and no build step.
+
+- **Light model.** `WL.light` holds the key-light side and the cast-shadow strength per stage (the Lido sun sits high on the right; indoor decks use overhead fixtures). Sprites shade toward it: lit spheres for heads and florets, side-lit volume gradients with a rim band on torsos, highlight/shade strokes along every limb, chrome and enamel materials on tools and props. Shadows are a soft contact blob plus a hard-edged cast shadow thrown away from the sun.
+- **Layer cache.** `WL.gfx.layer` paints static art (skyline, rail and superstructure, pool deck, buffets, the teak tile, signs, the logo, the HUD portrait) once per render scale. Layers at the live scale are copied 1:1 with smoothing off. Distant layers get a one-time blur at paint time for a depth-of-field feel, so the fight plane stays the sharpest thing on screen. Changing the display mode rebuilds them.
+- **Budget.** The effects that cost the most at 4K (full-frame gradients, resampled blits) were removed or confined to small areas. Lite (and AUTO after three slow seconds) drops shading, glows, the sun glitter and the debris sprites, and costs what the previous build did. Classic keeps the 640×360 nearest-neighbor picture.
+- **HUD.** No opaque bar: the sky shows between the pieces. Top-left is a round portrait in a gold bezel (it flashes red at low health), the HP bar, hard hats for spare lives and the Volcano Fart meter. Top-center is the logo (hidden in Large HUD, where the stage line tucks under the tracker). Top-right, FIX THE A/C shows one pip per wave, the ship temperature and the score. Combos are a slanted fire callout at center (left of center while the boss is up, so it never covers the cone's face).
+- **Controls.** Same sticky, see-through picture for the whole stage; buttons are glass discs with colored rims and key/pad badges on glyph chips. BOX still reads PICK UP when Lance has no toolbox.
+
 ## HD rendering verification
 
 The deterministic regression harness uses Node.js and `@napi-rs/canvas` (development only). Run `node tools/verify-hd.cjs` with that package available. It exercises phone/retina/4K sizing, display-mode/input independence, keyboard aliases, gamepad mappings, every touch button, all four stage renderers, gameplay updates, background auto-pause, settings persistence across a reload, key/pad remaps and the badges drawn from them, Continue from a wave, iframes and the anti-stun-lock rules, the Wrench Pop juggle, FX pool caps, and boss tell timing/landing. Set `WL_CAPTURE_DIR` to an existing directory to save rendered stage/title images. This is a native Canvas simulation, not a Safari or physical-gamepad test.
 
+`node tools/capture-gfx.cjs [outDir]` is the visual smoke test for the graphics. It renders the title, a staged mid-fight on every stage, the boss tell, pause, Large HUD, Classic and Lite at 1920×1080 (writing PNGs when `outDir` is given), and checks picture properties the art direction depends on: a daylight sky, warm wood on the deck, sky showing through the top HUD, see-through control plates, PICK UP on BOX, Classic at 640×360, one cache-bust stamp on every asset, and `.nojekyll`.
+
 ## Next improvements
 
-- Detailed character art and animation frames would provide a larger stylistic upgrade than further resolution increases. Preserve the current poses, hitboxes and timing.
+- The concept is painted 3D; this build is lit vector art. Closing the rest of that gap needs real character art (sprite sheets or rigged 2D parts with more poses) and painted backgrounds for the other three decks. Preserve the current poses, hitboxes and timing.
 - Add a portrait-orientation hint and test sustained high-resolution performance on real iPhones; Classic remains the low-cost fallback.
 
 The public Pages build was behind `main` at the start of this update. Always verify the public `js/main.js` after publishing; a merged graphics commit alone does not prove deployment.
