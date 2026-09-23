@@ -79,6 +79,15 @@ function stageFight(i, opts = {}) {
 }
 
 const shots = [];
+// Pages ships as-is: one cache-bust stamp on every asset, and Jekyll stays off.
+{
+  const html = fs.readFileSync(root + '/index.html', 'utf8');
+  const stamps = new Set([...html.matchAll(/\?v=([\w-]+)/g)].map(m => m[1]));
+  const scripts = [...html.matchAll(/<script src="js\/(\w+)\.js\?v=/g)].map(m => m[1]);
+  check(stamps.size === 1, 'one cache-bust stamp across css + scripts: ' + [...stamps].join(', '));
+  check(scripts.length === 12 && /css\/style\.css\?v=/.test(html), 'every script and the stylesheet are versioned');
+  check(fs.existsSync(root + '/.nojekyll'), '.nojekyll present');
+}
 // Title
 const title = new WL.scenes.Title(WL.game); title.t = 1.2;
 frame(() => title.draw(ctx)); save('01-title'); shots.push('01-title');
