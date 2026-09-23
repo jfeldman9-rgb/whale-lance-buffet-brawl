@@ -370,7 +370,7 @@ WL.cinema = (function () {
         ctx.restore();
       });
     }
-    slamY(b) { return b.slam.y != null ? b.slam.y : b.slam.end ? 118 : 72; }
+    slamY(b) { return b.slam.y != null ? b.slam.y : b.slam.end ? 186 : 72; }
     slamVisible(b, t) { return !!b.slam && t >= this.tl.slamAt && (b.slam.end || t <= this.tl.slamAt + 2.6); }
     drawSlam(ctx, b, t) {
       if (!b.slam) return;
@@ -387,7 +387,7 @@ WL.cinema = (function () {
       band.addColorStop(0, 'rgba(0,0,0,0)'); band.addColorStop(0.5, 'rgba(10,0,20,0.55)'); band.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = band; ctx.fillRect(0, y - 18, W, size + 40);
       if (b.slam.end && WL.art.plate('logo')) {
-        const P = WL.ARTDATA.plates.logo, lw = 250, lh = lw * P.h / P.w;
+        const P = WL.ARTDATA.plates.logo, lw = 300, lh = lw * P.h / P.w;
         ctx.drawImage(WL.art.plate('logo'), W / 2 - lw / 2, y - lh - 14, lw, lh);
       }
       ctx.translate(W / 2, y + size / 2);
@@ -575,7 +575,9 @@ WL.cinema = (function () {
         this.drawSlam(ctx, b, t);
       }
       this.drawBars(ctx);
-      if (settled) {
+      // The closing tagline card takes the frame on its own.
+      const finale = b.slam && b.slam.end && this.slamVisible(b, t);
+      if (settled && !finale) {
         this.drawKicker(ctx, b, t);
         this.drawTemp(ctx, b, t);
         this.drawDialogue(ctx, t);

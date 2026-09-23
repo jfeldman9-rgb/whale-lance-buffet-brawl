@@ -371,6 +371,7 @@ WL.audio = (function () {
     if (!ctx) return;
     if (songName === name && timer) return;
     stopMusic();
+    requested = name;
     song = SONGS[name]; songName = name; step = 0;
     nextTime = ctx.currentTime + 0.05;
     timer = setInterval(tick, 50);

@@ -187,6 +187,34 @@ s = stageFight(0);
 frame(() => s.draw(ctx)); save('09-lite'); shots.push('09-lite');
 WL.settings.set({ fx: 'auto' });
 
+// Story reels with the painted plates: opening card 1, a between-stage beat, an ending beat, Classic.
+{
+  await WL.assets.ready(['story']);
+  await new Promise(r => setTimeout(r, 200));
+  const idle = { pressed: {}, axis: () => ({ x: 0, y: 0 }) };
+  const at = (beats, secs) => { const r = new WL.scenes.StoryBeat(WL.game, { beats }); r.enter(); r.waiting = false; for (let t = 0; t < secs; t += 1 / 30) r.update(1 / 30, idle); r.shake = 0; r.flash = 0; return r; };
+  const storyShot = (name, beats, secs) => {
+    const r = at(beats, secs);
+    frame(() => r.draw(ctx)); save(name); shots.push(name);
+    return r;
+  };
+  for (const n of WL.assets.STORY) check(!!WL.assets.get('story:' + n), 'story plate decodes: ' + n);
+  storyShot('11-story-opening-1', [WL.STORY.op1], 2.6);
+  check(lum(avg(0, 0, 640, 18)) < 8 && lum(avg(0, 344, 640, 14)) < 20, 'letterbox bars frame the card');
+  const plate = avg(40, 60, 560, 200);
+  check(lum(plate) > 70 && plate[0] > plate[2], 'opening card 1 is the sunlit painted plate, not the drawn fallback: ' + plate.map(v => v | 0));
+  check(lum(avg(150, 318, 340, 20)) < 95, 'caption strip is dark enough to read over the plate');
+  storyShot('12-story-storybeat-lido-outro', [WL.STORY.st1Outro], 3.0);
+  check(lum(avg(40, 60, 560, 200)) > 60, 'repair-log beat shows its painted plate');
+  storyShot('13-story-captain', [WL.STORY.op2], 1.6);
+  storyShot('14-story-ending-1', [WL.STORY.end1], 2.4);
+  storyShot('15-story-ending-3', [WL.STORY.end3], 11.5);
+  WL.display.setMode('classic');
+  storyShot('16-story-classic', [WL.STORY.op3], 2.0);
+  check(canvas.width === 640, 'Classic story renders at 640x360');
+  WL.display.setMode('auto');
+}
+
 if (failures.length) { console.log(failures.length + ' visual check(s) failed'); process.exit(1); }
-console.log('PASS visual smoke: title, 4 stages mid-fight, boss tell, pause, classic, lite' + (out ? ' -> ' + out : ''));
+console.log('PASS visual smoke: title, 4 stages mid-fight, boss tell, pause, classic, lite, story reels' + (out ? ' -> ' + out : ''));
 })();

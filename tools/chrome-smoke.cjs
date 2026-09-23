@@ -138,6 +138,49 @@ const done = code => { chrome.kill('SIGKILL'); server.kill('SIGKILL'); process.e
   `);
   check(perf.fps >= 55 && !perf.lite, 'Lido fight at 1280x720 on the software path holds ~60 fps', `${perf.fps.toFixed(1)} fps, draw ${perf.drawMs.toFixed(2)} ms avg / ${perf.p95.toFixed(2)} ms p95, ${perf.fx} fx, ${perf.scale}x`);
   await shot('perf-1280x720');
+
+  // Story: painted plates versioned and loaded, the opening is scored (real signal on the
+  // master bus, not just calls), keys advance and skip, and the reel holds frame rate.
+  await js(`await WL.assets.ready(['story'])`);
+  const story = await js(`return performance.getEntriesByType('resource').map(e => e.name).filter(n => /assets\\/cutscenes\\//.test(n))`);
+  check(story.length >= 15 && story.every(n => /\\?v=20260923-cut1/.test(n)), 'story plates requested with ?v=20260923-cut1', story.length + ' plate requests');
+  check(await js(`return WL.assets.STORY.every(n => !!WL.assets.get('story:' + n))`), 'every story plate decoded');
+  check(await js('return WL.audio.unlocked'), 'audio unlocked by a real key press');
+  await js('WL.audio.trace.length = 0; WL.game.startNewGame(true);');
+  for (let i = 0; i < 100; i++) { if (await js('return WL.game.scene instanceof WL.scenes.Cutscene && WL.game.fadeDir === 0')) break; await sleep(50); }
+  const scored = await js(`
+    let peak = 0, frames = 0, run = true;
+    const tick = () => { frames++; peak = Math.max(peak, WL.audio.level()); if (run) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+    const t0 = performance.now();
+    await new Promise(r => setTimeout(r, 3500));
+    run = false;
+    const s = WL.game.scene;
+    return { peak, fps: frames / ((performance.now() - t0) / 1000), song: WL.audio.song, playing: WL.audio.playing, cues: WL.audio.trace.map(c => c.name), plate: !!WL.assets.get('story:' + s.beat.plate), beat: s.i, line: s.currentLine() };
+  `);
+  check(scored.playing && scored.song === 'story', 'music bed plays under the opening', scored.song);
+  check(scored.cues.includes('stinger:alarm') && scored.cues.includes('voLine') && scored.cues.includes('babble'), 'opening card 1 fires its stinger and VO chirps', [...new Set(scored.cues)].join(','));
+  check(scored.peak > 0.01, 'opening is audible on the master bus (not silent)', 'peak ' + scored.peak.toFixed(3));
+  check(scored.plate && scored.beat === 0, 'opening card 1 is on its painted plate');
+  check(scored.fps >= 55, 'opening reel holds ~60 fps at 1280x720 on the software path', scored.fps.toFixed(1) + ' fps');
+  await shot('story-opening-1');
+  const key = async (k, code, vk) => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: vk }); await sleep(60); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk }); await sleep(120); };
+  const before = await js('const s = WL.game.scene; return [s.i, s.currentLine(), s.t]');
+  for (let k = 0; k < 3; k++) await key('Enter', 'Enter', 13);
+  const after = await js('const s = WL.game.scene; return [s.i, s.currentLine(), s.t]');
+  check(after[0] > before[0] || after[1] > before[1], 'Enter advances the dialogue / beat', JSON.stringify({ before, after }));
+  await sleep(700);
+  await shot('story-after-enter');
+  await key('p', 'KeyP', 80);
+  for (let i = 0; i < 60; i++) { if (await js('return WL.game.scene instanceof WL.scenes.Play')) break; await sleep(50); }
+  check(await js('return WL.game.scene instanceof WL.scenes.Play && WL.game.scene.levelIndex === 0'), 'P skips the story into stage 1');
+  await js('WL.game.levelComplete(0, WL.game.scene.player)');
+  for (let i = 0; i < 60; i++) { if (await js('return WL.game.scene instanceof WL.scenes.StoryBeat && WL.game.fadeDir === 0')) break; await sleep(50); }
+  await sleep(2500);
+  const beat = await js(`const s = WL.game.scene; return { plates: s.beats.map(b => b.plate).join(), cues: WL.audio.trace.map(c => c.name).slice(-40), song: WL.audio.song, peak: (() => { let p = 0; for (let i = 0; i < 20; i++) p = Math.max(p, WL.audio.level()); return p; })() }`);
+  check(beat.plates === 'st1-lido-outro,st2-plant-intro', 'stage clear plays the repair log, then the next deck intro', beat.plates);
+  check(beat.cues.includes('stinger:fixed') && beat.song === 'story', 'StoryBeat is scored: stinger + music bed', beat.song);
+  await shot('story-storybeat');
   const errs = await js('return window.__errors');
   check(!errs.length, 'no page errors', errs.join(' | '));
 
