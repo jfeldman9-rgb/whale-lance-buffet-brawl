@@ -1169,6 +1169,111 @@
     floorGloss(ctx, camX, 'rgba(190,230,255,0.3)', 'rgba(170,220,255,0.18)', 192, 0.5, -48);
   }
 
+  /* ---------------- story beats (js/cinema.js plays them) ----------------
+     plate: assets/cutscenes/<plate>.webp. cam: [x0, y0, zoom0, x1, y1, zoom1], the
+     framed center in plate units (0..1), eased over the beat. kicker: location card.
+     slam: big title {at, text}. tags: name cards pinned to a plate point {at, name,
+     sub, x, y, side (-1 = card to the left)}. hits: accents {at, shake, text, x, y}.
+     lines: [speaker, text] with speaker lance | captain | narrator. sting: audio
+     stinger on entry. fx: ambient overlay. temp: [from, to] ship thermometer.
+     via: transition into this beat (wipe | flash | fade). */
+  const LANCE_TAG = { name: 'WHALE LANCE', sub: 'A/C & HEATING. 40 YEARS. ZERO SALADS.' };
+  const CAPTAIN_TAG = { name: 'CAPTAIN ANDERSEN', sub: 'MASTER, PRIDE OF AMERICA' };
+  const STORY = {
+    op1: {
+      plate: 'op1-ac-out', kicker: 'OFF WAIKIKI  ·  PRIDE OF AMERICA', sting: 'alarm', fx: 'heat', temp: [94, 94], via: 'fade',
+      cam: [0.62, 0.42, 1.2, 0.5, 0.48, 1.02],
+      slam: { at: 0.5, text: 'THE A/C IS OUT!' },
+      tags: [{ at: 1.1, name: 'THE A/C', sub: 'CAUSE OF DEATH: HAWAII', x: 0.9, y: 0.3, side: -1 }],
+      hits: [{ at: 0.5, shake: 5 }],
+      lines: [['narrator', 'Paradise, 94°F. The ice swan is losing.'], ['narrator', 'Somewhere below deck, the air conditioning just quit.']]
+    },
+    op2: {
+      plate: 'op2-captain-calls', kicker: 'THE BRIDGE  ·  0900 HOURS', sting: 'phone', fx: 'alarm',
+      cam: [0.5, 0.45, 1.04, 0.64, 0.38, 1.2],
+      tags: [{ at: 0.5, ...CAPTAIN_TAG, x: 0.62, y: 0.32, side: -1 }],
+      hits: [{ at: 1.3, shake: 4, text: 'SLAM!', x: 0.33, y: 0.8 }],
+      lines: [['captain', 'Get me WHALE LANCE AIR CONDITIONING AND HEATING.'], ['captain', 'I don\'t care what it costs. NOW!']]
+    },
+    op3: {
+      plate: 'op3-lance-arrives', kicker: 'LIDO DECK  ·  20 MINUTES LATER', sting: 'arrive',
+      cam: [0.42, 0.4, 1.16, 0.55, 0.46, 1.03],
+      tags: [{ at: 0.35, ...LANCE_TAG, x: 0.37, y: 0.24, side: 1 }, { at: 3.0, name: 'THE BUFFET', sub: 'STRICTLY OFF LIMITS', x: 0.84, y: 0.6, side: -1 }],
+      lines: [['captain', 'Fix the A/C. And Lance... STAY AWAY FROM THE BUFFET.'], ['lance', 'I\'ll need that in writing.']]
+    },
+    op4: {
+      plate: 'op4-salad-strikes', kicker: 'LIDO SALAD BAR  ·  94°F', sting: 'crash', fx: 'debris', via: 'flash',
+      cam: [0.6, 0.4, 1.2, 0.52, 0.48, 1.03],
+      slam: { at: 0.25, text: 'THE SALAD BAR STRIKES!' },
+      tags: [{ at: 0.9, name: 'BROCCOLI GOON', sub: '"EAT YOUR GREENS," HE SAID.', x: 0.74, y: 0.24, side: -1 }, { at: 1.5, name: 'CRUNCH CREW', sub: 'CARROT. ALL CRUNCH.', x: 0.45, y: 0.44, side: -1 }],
+      hits: [{ at: 0.25, shake: 8, text: 'KRSSSH!', x: 0.62, y: 0.3 }],
+      lines: [['narrator', 'On the Lido, the salad bar clocked in. Violently.'], ['lance', 'I fix ducts. I do not fix your diet.']]
+    },
+    st1Intro: {
+      plate: 'st1-lido-intro', kicker: 'STAGE 1  ·  LIDO DECK  ·  94°F', sting: 'stage', fx: 'heat', temp: [94, 94], via: 'wipe',
+      cam: [0.3, 0.46, 1.18, 0.5, 0.48, 1.03],
+      tags: [{ at: 0.6, name: 'SALAD BAR UNION', sub: 'LOCAL 94. DEMANDS: YOU.', x: 0.35, y: 0.45, side: 1 }],
+      lines: [['narrator', 'The salad bar has a union now. Their demand is you.'], ['lance', 'Compressor first. The plate is a bonus.']]
+    },
+    st1Outro: {
+      plate: 'st1-lido-outro', kicker: 'A/C REPAIR LOG  ·  LIDO INTAKE', sting: 'fixed', fx: 'cool', temp: [94, 88], via: 'wipe',
+      cam: [0.62, 0.4, 1.2, 0.54, 0.46, 1.04],
+      hits: [{ at: 1.0, shake: 4, text: 'YOINK!', x: 0.76, y: 0.3 }],
+      lines: [['narrator', 'The intake was packed with kale. Kale. In the air handler.'], ['lance', 'That is not a filter. That is a lifestyle.']]
+    },
+    st2Intro: {
+      plate: 'st2-plant-intro', kicker: 'STAGE 2  ·  DECK 4  ·  THE A/C PLANT  ·  88°F', sting: 'stage', fx: 'steam', temp: [88, 88], via: 'wipe',
+      cam: [0.7, 0.36, 1.22, 0.5, 0.46, 1.03],
+      tags: [{ at: 0.6, name: 'CARROT NINJAS', sub: 'ORANGE BELT. ACTUAL BELT.', x: 0.7, y: 0.2, side: -1 }],
+      hits: [{ at: 1.6, shake: 3, text: 'SHING!', x: 0.78, y: 0.2 }],
+      lines: [['narrator', 'Pipes hot enough to braise a carrot. The carrots noticed.'], ['lance', 'Kung fu is not on the work order.']]
+    },
+    st2Outro: {
+      plate: 'st2-plant-outro', kicker: 'A/C REPAIR LOG  ·  COMPRESSOR', sting: 'fixed', fx: 'cool', temp: [88, 81], via: 'wipe',
+      cam: [0.36, 0.4, 1.2, 0.52, 0.46, 1.04],
+      lines: [['narrator', 'Compressor rewired with duct tape and one unkind word.'], ['lance', 'She\'ll hold till Maui. Maybe Tuesday.']]
+    },
+    st3Intro: {
+      plate: 'st3-spa-intro', kicker: 'STAGE 3  ·  DECK 12  ·  SPA & JUICE BAR  ·  81°F', sting: 'stage', fx: 'sparkle', temp: [81, 81], via: 'wipe',
+      cam: [0.66, 0.34, 1.22, 0.5, 0.46, 1.03],
+      tags: [{ at: 0.6, name: 'KALE BRUISER', sub: 'SUPERFOOD. SUPER PROBLEM.', x: 0.66, y: 0.2, side: -1 }, { at: 1.4, name: 'FROZEN YOGURT', sub: 'LANCE\'S LEAST FAVORITE CUP.', x: 0.5, y: 0.56, side: 1 }],
+      lines: [['narrator', 'The kale has a trainer. The froyo has opinions.'], ['lance', 'I don\'t do green juice. I do green meters.']]
+    },
+    st3Outro: {
+      plate: 'st3-spa-outro', kicker: 'A/C REPAIR LOG  ·  COOLANT LINES', sting: 'reveal', fx: 'pink', temp: [81, 75], via: 'wipe',
+      cam: [0.64, 0.34, 1.24, 0.5, 0.44, 1.04],
+      hits: [{ at: 2.2, shake: 3, text: 'THUMP.', x: 0.66, y: 0.24 }],
+      lines: [['narrator', 'Juice bar: surrendered. The freezer blinks -40°F.'], ['narrator', 'Something strawberry is awake.'], ['lance', 'Smells like a dare.']]
+    },
+    st4Intro: {
+      plate: 'st4-freezer-intro', kicker: 'STAGE 4  ·  DECK 3  ·  THE FREEZER  ·  -40°F', sting: 'boss', fx: 'frost', temp: [75, 75], via: 'flash',
+      cam: [0.66, 0.34, 1.26, 0.5, 0.46, 1.03],
+      slam: { at: 0.45, text: 'DESSERT HAS A GRIEVANCE' },
+      tags: [{ at: 1.2, name: 'GIANT FROYO CONE', sub: 'FINAL BOSS. STRAWBERRY. FURIOUS.', x: 0.66, y: 0.34, side: -1 }],
+      hits: [{ at: 0.45, shake: 7 }],
+      lines: [['narrator', 'Last valve. Behind the dessert station. Of course.'], ['lance', 'I have never liked frozen yogurt. Filing that now.']]
+    },
+    end1: {
+      plate: 'end1-last-valve', kicker: 'THE LAST VALVE', sting: 'fixed', fx: 'cool', temp: [75, 72], via: 'fade',
+      cam: [0.3, 0.3, 1.22, 0.5, 0.46, 1.03],
+      slam: { at: 1.1, text: 'A/C RESTORED!', y: 206 },
+      hits: [{ at: 1.1, shake: 6, text: 'KA-CHUNK!', x: 0.18, y: 0.24 }],
+      lines: [['narrator', 'The cone is a strawberry puddle with regrets.'], ['narrator', 'One turn of the valve. A hum. A breeze. 72°F.']]
+    },
+    end2: {
+      plate: 'end2-svelte', kicker: 'LIDO DECK  ·  GOLDEN HOUR', sting: 'fanfare', fx: 'sparkle', via: 'wipe',
+      cam: [0.5, 0.36, 1.2, 0.5, 0.44, 1.03],
+      tags: [{ at: 0.5, name: 'CAPTAIN ANDERSEN', sub: 'IMPRESSED. CONFUSED.', x: 0.64, y: 0.18, side: 1 }, { at: 1.1, name: 'WHALE LANCE', sub: 'NOW SVELTE', x: 0.34, y: 0.22, side: -1 }],
+      lines: [['captain', 'Lance. You look... svelte.'], ['lance', 'Four decks, one salad-bar uprising and a fart with a work order.'], ['lance', 'That\'s cardio.']]
+    },
+    end3: {
+      plate: 'end3-carving-station', kicker: 'EPILOGUE  ·  THE CARVING STATION', sting: 'fanfare', fx: 'confetti', via: 'wipe',
+      cam: [0.44, 0.3, 1.22, 0.52, 0.46, 1.02],
+      slam: { end: true, text: 'WE SPEAR THE COMPETITION' },
+      lines: [['captain', 'Buffet\'s open. You earned the carving station.'], ['lance', 'Now you\'re speaking my language.']]
+    }
+  };
+
   /* ---------------- helpers for wave data ---------------- */
   const grp = (...list) => list; // [type, count, opts]
   const wave = (x, groups, extra = {}) => ({ x, groups, ...extra });
@@ -1177,11 +1282,8 @@
     {
       id: 1, name: 'LIDO DECK BUFFET', short: 'LIDO DECK', temp: 94, subtitle: 'POOL DECK 11 — 94°F', music: 'lido', bg: lidoBg, fg: lidoFg, length: 2600, palette: '#c99a5b',
       banner: ['LIDO DECK', 'THE SALAD BAR CLOCKED IN'],
-      intro: {
-        title: 'LIDO DECK',
-        lines: ['The salad bar has a union now. Their demand is you.', 'Ship temp: 94°F. The ice sculpture is sweating.', 'Lance: "Compressor first. The plate is a bonus."']
-      },
-      outro: { lines: ['The intake is packed with kale. Kale. In the air handler.', 'Lance: "That is not a filter. That is a lifestyle."', 'Duct tape. Spite. 94°F → 88°F.'] },
+      intro: STORY.st1Intro,
+      outro: STORY.st1Outro,
       objects: [
         { kind: 'plates', x: 200, y: 250, contents: ['chip'] },
         { kind: 'cart', x: 380, y: 300, contents: ['beans', 'burger'] },
@@ -1209,8 +1311,8 @@
     {
       id: 2, name: 'A/C PLANT', short: 'A/C PLANT', temp: 88, subtitle: 'DECK 4 — PIPE CORRIDORS — 88°F', music: 'plant', bg: plantBg, length: 2800, palette: '#48525f',
       banner: ['A/C PLANT', 'CARROTS WITH A BLACK BELT'],
-      intro: { title: 'DECK 4: THE A/C PLANT', lines: ['Pipes hot enough to braise a carrot. The carrots noticed.', 'They brought shurikens. Lance brought a pipe wrench.', 'Lance: "Kung fu is not on the work order."'] },
-      outro: { lines: ['Compressor rewired with duct tape and one unkind word.', 'Lance: "She\'ll hold till Maui. Maybe Tuesday."', '88°F → 81°F. Refrigerant is flowing. The carrots are not.'] },
+      intro: STORY.st2Intro,
+      outro: STORY.st2Outro,
       hazards: [
         { kind: 'steam', x: 700, y: 260, period: 3.2, offset: 0 },
         { kind: 'steam', x: 1500, y: 300, period: 2.8, offset: 1.2 },
@@ -1240,8 +1342,8 @@
     {
       id: 3, name: 'SPA & JUICE BAR', short: 'JUICE BAR', temp: 81, subtitle: 'DECK 12 — ELITE GREENS — 81°F', music: 'spa', bg: spaBg, length: 2800, palette: '#6fb7ad',
       banner: ['SPA & JUICE BAR', 'KALE HAS A MEMBERSHIP'],
-      intro: { title: 'SPA & JUICE BAR', lines: ['Coolant lines run under the cucumber water.', 'The kale has a trainer. The froyo has opinions.', 'Lance: "I don\'t do green juice. I do green meters."'] },
-      outro: { lines: ['Juice bar: surrendered. Coolant: moving.', 'The freezer blinks -40°F and smells like a dare.', '81°F → 75°F. Something strawberry is awake.'] },
+      intro: STORY.st3Intro,
+      outro: STORY.st3Outro,
       objects: [
         { kind: 'plates', x: 260, y: 240, contents: ['chip'] },
         { kind: 'vending', x: 500, y: 240, contents: ['beans', 'chili', 'chip'] },
@@ -1266,7 +1368,7 @@
     {
       id: 4, name: 'FREEZER / DESSERT STATION', short: 'THE FREEZER', temp: 75, subtitle: 'DECK 3 — -40°F — FINAL', music: 'freezer', bg: freezerBg, length: 1900, palette: '#8fb6dc', boss: true,
       banner: ['THE FREEZER', 'DESSERT HAS A GRIEVANCE'],
-      intro: { title: 'THE FREEZER', lines: ['Last valve. Behind the dessert station. Of course.', 'It is cold. It is quiet. It is strawberry.', 'Lance: "I have never liked frozen yogurt. Filing that now."'] },
+      intro: STORY.st4Intro,
       objects: [
         { kind: 'plates', x: 220, y: 240, contents: ['chip'] },
         { kind: 'cooler', x: 380, y: 320, contents: ['chili', 'beans'] },
@@ -1286,22 +1388,12 @@
     }
   ];
 
-  /* Opening cutscene captions — panel order matches the attached art */
-  const OPENING = [
-    { img: 'cut1', title: 'HAWAII — UNDER THE SUN...', lines: ['Aboard the Pride of America, paradise is 94°F', 'and the ice sculpture is losing. The A/C is OUT.'] },
-    { img: 'cut2', title: 'THE CAPTAIN CALLS FOR HELP', lines: ['Captain Andersen: "Get me WHALE LANCE', 'AIR CONDITIONING AND HEATING. Now."'] },
-    { img: 'cut3', title: 'LANCE ARRIVES', lines: ['Captain: "Fix the A/C. And Lance...', 'STAY AWAY FROM THE BUFFET."', 'Lance: "I\'ll need that in writing."'] },
-    { img: 'cut4', title: 'THE SALAD BAR STRIKES', lines: ['Deep in the ducts, the greens clock in.', 'Lance: "I fix ducts. I do not fix your diet."'] }
-  ];
-
-  const ENDING = [
-    { lines: ['The cone is a strawberry puddle with regrets.', 'Lance turns the last valve like he means it.', 'A hum. A breeze. 72°F. The ship exhales.'] },
-    { lines: ['Captain Andersen: "Lance. You look... svelte."', 'Lance: "Four decks, one salad-bar uprising,', 'and a fart with a work order. That\'s cardio."'] },
-    { lines: ['Captain: "Buffet\'s open. You earned the carving station."', 'Lance: "Now you\'re speaking my language."', 'WHALE LANCE A/C — WE SPEAR THE COMPETITION.'] }
-  ];
+  const OPENING = [STORY.op1, STORY.op2, STORY.op3, STORY.op4];
+  const ENDING = [STORY.end1, STORY.end2, STORY.end3];
 
   WL.LEVELS = LEVELS;
   WL.OPENING = OPENING;
   WL.ENDING = ENDING;
+  WL.STORY = STORY;
   WL.WALL_BASE = WALL_BASE;
 })();

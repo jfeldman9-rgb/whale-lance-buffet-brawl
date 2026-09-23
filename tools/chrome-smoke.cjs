@@ -55,9 +55,9 @@ const done = code => { chrome.kill('SIGKILL'); server.kill('SIGKILL'); process.e
   check(await js('return WL.game.scene instanceof WL.scenes.Title'), 'boots to the title');
   check(await js(`return !!WL.art.plate('lido-far') && WL.art.has('lance')`), 'painted atlases and plates load over HTTP');
   const stamp = await js(`return [...document.scripts].map(s => (s.src.match(/v=([\\w-]+)/) || [])[1]).filter(Boolean)`);
-  check(stamp.length > 5 && stamp.every(v => v === '20260923-gfx2b'), 'every script served with ?v=20260923-gfx2b');
+  check(stamp.length > 5 && stamp.every(v => v === '20260923-cut1'), 'every script served with ?v=20260923-cut1');
   const imgs = await js(`return performance.getEntriesByType('resource').map(e => e.name).filter(n => /assets\\/art\\//.test(n))`);
-  check(imgs.length >= 15 && imgs.every(n => /\\?v=20260923-gfx2b/.test(n)), 'painted art requested with ?v=20260923-gfx2b', imgs.length + ' art requests');
+  check(imgs.length >= 15 && imgs.every(n => /\\?v=20260923-cut1/.test(n)), 'painted art requested with ?v=20260923-cut1', imgs.length + ' art requests');
   check((await js('return WL.assets.criticalMissing().length')) === 0, 'no critical painted art missing, no failure banner');
 
   // Watch what the touch/mouse layer draws so the BOX badge can be checked.

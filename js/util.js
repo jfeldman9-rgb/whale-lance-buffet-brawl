@@ -8,6 +8,8 @@ WL.H = 360;
 WL.FLOOR_TOP = 205;     // highest walkable foot position (far)
 WL.FLOOR_BOTTOM = 345;  // lowest walkable foot position (near)
 WL.FONT = "'Press Start 2P', 'Courier New', monospace";
+// Story dialogue: a heavy sans that stays readable in long lines at 1080p.
+WL.FONT_UI = "'Trebuchet MS', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Liberation Sans', sans-serif";
 
 /* Display presentation. main.js fills renderScale / pc / dpr from the window.
    mode: 'auto' (device pixels on every screen, up to 4K),
@@ -135,7 +137,7 @@ WL.text = {
   draw(ctx, str, x, y, opts = {}) {
     const size = opts.size || 8;
     ctx.save();
-    ctx.font = `${size}px ${WL.FONT}`;
+    ctx.font = WL.text.font(size, opts);
     ctx.textAlign = opts.align || 'left';
     ctx.textBaseline = opts.baseline || 'top';
     if (opts.shadow !== false) {
@@ -180,17 +182,19 @@ WL.text = {
     const ax = opts.align === 'center' ? x - tw / 2 : opts.align === 'right' ? x - tw : x;
     WL.gfx.blit(ctx, e, ax - e.pad, y - e.pad);
   },
-  width(ctx, str, size) {
+  /** opts.ui = the dialogue face; opts.weight = CSS weight (ui only). */
+  font(size, opts) { return opts && opts.ui ? `${opts.weight || 700} ${size}px ${WL.FONT_UI}` : `${size}px ${WL.FONT}`; },
+  width(ctx, str, size, opts) {
     ctx.save();
-    ctx.font = `${size}px ${WL.FONT}`;
+    ctx.font = this.font(size, opts);
     const w = ctx.measureText(str).width;
     ctx.restore();
     return w;
   },
   // Word-wrap into lines that fit maxWidth
-  wrap(ctx, str, size, maxWidth) {
+  wrap(ctx, str, size, maxWidth, opts) {
     ctx.save();
-    ctx.font = `${size}px ${WL.FONT}`;
+    ctx.font = this.font(size, opts);
     const words = str.split(' ');
     const lines = [];
     let line = '';

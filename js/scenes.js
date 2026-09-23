@@ -1,5 +1,5 @@
-/* Scenes: Title, Cutscene (opening panels), StoryBeat (between stages),
-   Play (the beat-em-up), GameOver, Ending/Victory. */
+/* Scenes: Title, Play (the beat-em-up), GameOver, Ending/Victory.
+   Cutscene and StoryBeat come from js/cinema.js. */
 'use strict';
 
 (function () {
@@ -25,7 +25,6 @@
     if (WL.settings.data.colorblind) return late ? '#d55e00' : '#f0e442';
     return late ? '#ff2438' : '#ff9a1f';
   }
-  const confirmWord = () => (WL.input.touchEnabled ? 'TAP' : 'ENTER');
 
   /* ---- HUD art ---- */
   function drawHudPortrait(ctx, cx, cy, mood) {
@@ -424,106 +423,9 @@
     }
   }
 
-  /* ================================================================== */
-  /* Cutscene: sequence of art panels with captions                     */
-  /* ================================================================== */
-  class Cutscene {
-    constructor(game, panels, onDone, music) { this.game = game; this.panels = panels; this.onDone = onDone; this.idx = 0; this.t = 0; this.chars = 0; this.music = music; }
-    enter() { if (this.music) A.playMusic(this.music); }
-    get panel() { return this.panels[this.idx]; }
-    fullText() { return this.panel.lines.join('\n'); }
-    update(dt, inp) {
-      this.t += dt; this.chars += dt * 38;
-      const full = this.fullText().length;
-      if (inp.pressed.pause) { A.sfx.select(); this.onDone(); return; }
-      if (anyPress(inp)) {
-        A.sfx.blip();
-        if (this.chars < full) this.chars = full;
-        else this.next();
-      } else if (this.chars > full && this.t > 7.5) this.next();
-    }
-    next() { this.idx++; this.t = 0; this.chars = 0; if (this.idx >= this.panels.length) this.onDone(); }
-    draw(ctx) {
-      const p = this.panel; if (!p) return;
-      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-      const img = WL.assets.get(p.img);
-      const boxH = 74;
-      if (img) {
-        // backdrop: darkened blow-up of the same panel fills the side bars
-        const cs = Math.max(W / img.width, H / img.height) * 1.1;
-        ctx.save(); ctx.globalAlpha = 0.35; ctx.drawImage(img, (W - img.width * cs) / 2, (H - img.height * cs) / 2, img.width * cs, img.height * cs); ctx.restore();
-        ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, H);
-        // the panel itself, fully visible above the caption box, with a slow Ken-Burns zoom
-        const areaH = H - boxH + 2;
-        const zoom = 1 + Math.min(this.t, 8) * 0.005;
-        const s = Math.min(W / img.width, areaH / img.height) * zoom;
-        const dw = img.width * s, dh = img.height * s;
-        ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, areaH); ctx.clip();
-        ctx.drawImage(img, (W - dw) / 2, (areaH - dh) / 2, dw, dh);
-        ctx.restore();
-      } else {
-        // procedural stand-in panel
-        const g = ctx.createLinearGradient(0, 0, 0, H - boxH); g.addColorStop(0, '#1b3f8a'); g.addColorStop(1, '#0b1a3a'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H - boxH);
-        T.draw(ctx, p.title, W / 2, 110, { size: 18, align: 'center', gradient: ['#fff3a0', '#ff4d00'], stroke: '#000', strokeWidth: 5 });
-        S.drawLance(ctx, W / 2, 250, { pose: 'idle', t: this.t, facing: 1 });
-      }
-      // caption box
-      D.fillRRect(ctx, 8, H - boxH + 4, W - 16, boxH - 10, 4, 'rgba(8,8,24,0.92)', '#ffe14a');
-      T.draw(ctx, p.title, 18, H - boxH + 12, { size: 8, color: '#ffe14a' });
-      const shown = this.fullText().slice(0, Math.floor(this.chars)).split('\n');
-      shown.forEach((l, i) => T.draw(ctx, l, 18, H - boxH + 28 + i * 12, { size: 7, color: '#fff' }));
-      T.draw(ctx, `${this.idx + 1}/${this.panels.length}`, W - 18, H - boxH + 12, { size: 7, align: 'right', color: '#aaa' });
-      if (Math.floor(this.t * 2) % 2 === 0) T.draw(ctx, confirmWord(), W - 18, H - 18, { size: 7, align: 'right', color: '#aaa' });
-      T.draw(ctx, 'P: SKIP', 18, H - 18, { size: 6, color: '#777' });
-    }
-  }
-
-  /* ================================================================== */
-  /* StoryBeat: between-stage repair scene with a thermometer           */
-  /* ================================================================== */
-  class StoryBeat {
-    constructor(game, o) {
-      // o: {title, lines, tempFrom, tempTo, palette, onDone, pose, thin}
-      this.game = game; Object.assign(this, o); this.t = 0; this.chars = 0;
-    }
-    enter() { A.playMusic(this.music || 'title'); }
-    fullText() { return this.lines.join('\n'); }
-    update(dt, inp) {
-      this.t += dt; this.chars += dt * 40;
-      const full = this.fullText().length;
-      if (anyPress(inp) || inp.pressed.pause) { A.sfx.blip(); if (this.chars < full) this.chars = full; else this.onDone(); }
-      else if (this.chars > full && this.t > 7) this.onDone();
-    }
-    draw(ctx) {
-      const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#05050f'); g.addColorStop(1, this.palette || '#1b2230'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-      // floor line
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 262, W, H - 262);
-      // ducts
-      for (let i = 0; i < 4; i++) D.fillRRect(ctx, 20 + i * 160, 30 + (i % 2) * 14, 120, 16, 8, '#5b6b7c', S.OUT);
-      // Lance working
-      S.drawLance(ctx, 150, 262, { pose: this.pose || 'carry', t: this.t, facing: 1, thin: this.thin });
-      // thermometer
-      const tx = 470, ty = 50, th = 150;
-      D.fillRRect(ctx, tx - 14, ty - 10, 28, th + 30, 12, '#eee', S.OUT);
-      D.fillRRect(ctx, tx - 6, ty, 12, th, 6, '#bbb', S.OUT);
-      const from = this.tempFrom, to = this.tempTo;
-      const k = U.clamp((this.t - 0.6) / 2.5, 0, 1);
-      const cur = U.lerp(from, to, k);
-      const pct = U.clamp((cur - 60) / 40, 0, 1);
-      const hcol = cur > 85 ? '#e03020' : cur > 76 ? '#f0a020' : '#30a0e0';
-      ctx.fillStyle = hcol; ctx.fillRect(tx - 4, ty + th - th * pct, 8, th * pct);
-      D.circle(ctx, tx, ty + th + 8, 12, hcol, S.OUT);
-      for (let i = 0; i <= 4; i++) { ctx.fillStyle = '#333'; ctx.fillRect(tx + 10, ty + i * (th / 4), 8, 2); T.draw(ctx, `${100 - i * 10}`, tx + 22, ty + i * (th / 4) - 4, { size: 6, color: '#ddd' }); }
-      T.draw(ctx, 'SHIP TEMP', tx, ty - 34, { size: 8, align: 'center', color: '#fff' });
-      T.draw(ctx, `${Math.round(cur)}°F`, tx, ty + th + 34, { size: 14, align: 'center', color: hcol, stroke: '#000' });
-      // text box
-      D.fillRRect(ctx, 8, 274, W - 16, 78, 4, 'rgba(8,8,24,0.92)', '#ffe14a');
-      T.draw(ctx, this.title, 18, 282, { size: 8, color: '#ffe14a' });
-      const shown = this.fullText().slice(0, Math.floor(this.chars)).split('\n');
-      shown.forEach((l, i) => T.draw(ctx, l, 18, 298 + i * 13, { size: 7, color: '#fff' }));
-      if (Math.floor(this.t * 2) % 2 === 0) T.draw(ctx, confirmWord(), W - 18, H - 16, { size: 7, align: 'right', color: '#aaa' });
-    }
-  }
+  /* Cutscene (the opening) and StoryBeat (between stages, the ending) are
+     cinematic reels: see js/cinema.js. */
+  const { Cutscene, StoryBeat } = WL.cinema;
 
   /* ================================================================== */
   /* FX manager                                                         */
