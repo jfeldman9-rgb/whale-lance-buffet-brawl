@@ -312,7 +312,7 @@
           const hitX = e.x - this.facing * 6;
           const hitY = e.y - e.height * 0.55 - e.z;
           this.g.fx.spark(hitX, hitY, box.knockdown);
-          this.g.fx.foodDebris(hitX, hitY, e.type, e.y);
+          this.g.fx.foodDebris(hitX, hitY, e.type, e.y, box.knockdown);
           this.g.fx.impactRing(hitX, hitY, box.knockdown);
           if (this.g.triggerHitFlash) this.g.triggerHitFlash(box.knockdown ? 0.05 : 0.03);
           n++;
@@ -850,9 +850,10 @@
       // Type marker on the deck: a lit ring rather than an opaque disc.
       ctx.save();
       const prx = Math.max(12, this.height * 0.24);
-      ctx.globalAlpha = this.elite ? 0.5 : 0.28;
+      const painted = WL.art.has(this.type);
+      ctx.globalAlpha = this.elite ? 0.5 : painted ? 0.12 : 0.28;
       WL.draw.ellipse(ctx, sx, sy + 1, prx, 5.5, plate);
-      ctx.globalAlpha = this.elite ? 1 : 0.85;
+      ctx.globalAlpha = this.elite ? 1 : painted ? 0.5 : 0.85;
       ctx.lineWidth = this.elite ? 2 : 1.5;
       ctx.strokeStyle = this.elite ? '#ffe14a' : plate;
       ctx.beginPath(); ctx.ellipse(sx, sy + 1, prx, 5.5, 0, 0, Math.PI * 2); ctx.stroke();

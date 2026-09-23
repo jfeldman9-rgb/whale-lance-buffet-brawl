@@ -490,7 +490,7 @@ WL.sprites = (function () {
     return true;
   }
 
-  const PAINT_H = { broccoli: 80, carrot: 74, sprout: 44, celery: 92 };
+  const PAINT_H = { broccoli: 88, carrot: 82, sprout: 46, celery: 94 };
   function enemyFrame(type, pose, t) {
     switch (pose) {
       case 'walk': return Math.floor(t * 6) % 2 ? 'walk1' : 'walk0';
@@ -1320,6 +1320,10 @@ WL.sprites = (function () {
   /* ================= PICKUPS ================= */
   function drawPickup(ctx, x, y, kind, t) {
     drawGlow(ctx, x, y - 14 + Math.sin(t * 4) * 2, 18, 0.22 + 0.08 * Math.sin(t * 5));
+    if (WL.art.has('props') && WL.art.frame('props', kind)) {
+      WL.art.draw(ctx, 'props', kind, x, y - 3 + Math.sin(t * 4) * 2);
+      return;
+    }
     ctx.save(); ctx.translate(x, y - 6 + Math.sin(t * 4) * 2);
     outlineStyle(ctx, 2);
     switch (kind) {
@@ -1367,7 +1371,22 @@ WL.sprites = (function () {
   }
 
   /* ================= BREAKABLE OBJECTS ================= */
+  const OBJECT_FRAME = { cart: 'cart', plates: 'platesStack', chair: 'chair', tray: 'tray', cooler: 'cooler', crate: 'crate' };
   function drawObject(ctx, x, y, kind, hp, t) {
+    const pf = OBJECT_FRAME[kind];
+    if (pf && WL.art.has('props')) {
+      const dmg = hp <= 1;
+      if (WL.light.gloss) WL.art.reflect(ctx, 'props', pf, x, y, 0, { strength: WL.light.gloss });
+      WL.art.castShadow(ctx, 'props', pf, x, y, 0, {});
+      WL.art.draw(ctx, 'props', pf, x, y, dmg ? { rot: -0.07, pivot: 0 } : {});
+      if (dmg) {
+        ctx.save(); ctx.translate(x, y);
+        ctx.strokeStyle = 'rgba(20,12,8,0.85)'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(-6, -26); ctx.lineTo(0, -16); ctx.lineTo(-4, -8); ctx.lineTo(2, -3); ctx.stroke();
+        ctx.restore();
+      }
+      return;
+    }
     ctx.save(); ctx.translate(x, y);
     outlineStyle(ctx, 2);
     LS = WL.light.side;
@@ -1478,10 +1497,17 @@ WL.sprites = (function () {
           ctx.translate(-trailDir * t * 14, t * 4);
           ctx.rotate((p.t - t * 0.03) * 12);
           ctx.globalAlpha = 0.35 - t * 0.1;
-          tool(ctx, 'toolbox', 0, 0, 0);
+          if (WL.art.has('props')) WL.art.draw(ctx, 'props', 'toolbox', 0, 8, { sx: 1.25, sy: 1.25 });
+          else tool(ctx, 'toolbox', 0, 0, 0);
           ctx.restore();
         }
         ctx.restore();
+        if (WL.art.has('props')) {
+          // The painted box tumbles about its middle (the frame's anchor is its base).
+          ctx.rotate(p.t * 12);
+          WL.art.draw(ctx, 'props', 'toolbox', 0, 8, { sx: 1.25, sy: 1.25 });
+          break;
+        }
         ctx.rotate(p.t * 12);
         tool(ctx, 'toolbox', 0, 0, 0);
         break;
@@ -1613,7 +1639,24 @@ WL.sprites = (function () {
     }
     return e;
   }
+  /* Painted debris variants per shape; a leaf's colour picks lettuce, kale or cucumber. */
+  const DEBRIS_ART = { floret: ['floret', 'floret2'], tomato: ['tomato', 'cherry', 'tomato', 'radish'], coin: ['coin', 'coin', 'stick'], shard: ['shard', 'shard2'], fork: ['fork'], spoon: ['spoon'], crumb: ['crouton', 'pepper'] };
+  function debrisFrame(shape, color, r) {
+    let list = DEBRIS_ART[shape];
+    if (shape === 'leaf') list = /^#[0-3]/.test(color) ? ['kale', 'kale', 'sproutHalf'] : ['lettuce', 'lettuce', 'cucumber', 'sproutHalf'];
+    if (shape === 'splinter') list = color === '#f08a1e' ? ['stick'] : /^#[89a-c]/i.test(color) ? ['cucumber', 'lettuce'] : null;
+    if (!list) return null;
+    return list[Math.floor(r * 977) % list.length];
+  }
   function drawDebris(ctx, x, y, shape, color, r, rot) {
+    const pf = WL.art.has('props') && WL.display.mode !== 'classic' && debrisFrame(shape, color, r);
+    if (pf) {
+      const sc = r * 3.4 / 12;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0);
+      WL.art.draw(ctx, 'props', pf, 0, 0, { sx: sc, sy: sc });
+      ctx.restore();
+      return;
+    }
     const e = debrisSprite(shape, color);
     const sz = r * 2.8;
     ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0);
@@ -1621,7 +1664,44 @@ WL.sprites = (function () {
     ctx.restore();
   }
 
+  /* A painted-style starburst: tapered rays around a white-hot core, drawn additively. */
+  let burstCanvas = null;
+  function burstSprite() {
+    if (burstCanvas) return burstCanvas;
+    const N = 192, c = N / 2;
+    burstCanvas = document.createElement('canvas');
+    burstCanvas.width = burstCanvas.height = N;
+    const g = burstCanvas.getContext('2d');
+    const rays = [[0, 1], [0.8, 0.62], [1.57, 0.95], [2.3, 0.58], [3.14, 0.9], [3.9, 0.66], [4.71, 0.8], [5.5, 0.6], [0.4, 0.4], [2.7, 0.42], [4.3, 0.38], [5.9, 0.45]];
+    for (const [a, len] of rays) {
+      const L = c * len, w = 5 + len * 7;
+      g.save(); g.translate(c, c); g.rotate(a);
+      const gr = g.createLinearGradient(0, 0, L, 0);
+      gr.addColorStop(0, 'rgba(255,255,245,1)'); gr.addColorStop(0.35, 'rgba(255,226,120,0.85)'); gr.addColorStop(1, 'rgba(255,120,20,0)');
+      g.fillStyle = gr;
+      g.beginPath(); g.moveTo(0, -w); g.quadraticCurveTo(L * 0.3, -w * 0.3, L, 0); g.quadraticCurveTo(L * 0.3, w * 0.3, 0, w); g.closePath(); g.fill();
+      g.restore();
+    }
+    const core = g.createRadialGradient(c, c, 0, c, c, c * 0.42);
+    core.addColorStop(0, 'rgba(255,255,255,1)'); core.addColorStop(0.35, 'rgba(255,250,215,0.95)'); core.addColorStop(1, 'rgba(255,190,70,0)');
+    g.fillStyle = core; g.fillRect(0, 0, N, N);
+    return burstCanvas;
+  }
   function drawHitSpark(ctx, x, y, t, big) {
+    if (rich() && WL.art.has('lance')) {
+      const k = Math.min(1, t / 0.22);
+      ctx.save(); ctx.translate(x, y);
+      drawGlow(ctx, 0, 0, (big ? 46 : 28) * (0.6 + k * 0.9), (1 - k) * (big ? 0.95 : 0.8));
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = Math.max(0, 1 - k * k);
+      const r = (big ? 36 : 22) * (0.75 + k * 0.55);
+      ctx.rotate(((x * 0.13 + y * 0.07) % 1.5) + k * 0.4);
+      ctx.drawImage(burstSprite(), -r, -r, r * 2, r * 2);
+      ctx.rotate(0.35); ctx.globalAlpha *= 0.6;
+      ctx.drawImage(burstSprite(), -r * 0.62, -r * 0.62, r * 1.24, r * 1.24);
+      ctx.restore();
+      return;
+    }
     ctx.save(); ctx.translate(x, y);
     if (rich()) {
       const k = Math.min(1, t / 0.22);

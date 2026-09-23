@@ -107,12 +107,38 @@ frame(() => title.draw(ctx)); save('01-title'); shots.push('01-title');
   // Title keeps the deck scene bright behind the logo.
   const sky = avg(0, 0, 640, 30); check(lum(sky) > 90, 'title sky is daylight, not a dark plate: ' + lum(sky).toFixed(0));
 }
+// The concept's moment: the toolbox smash into KALE RAGE, CRUNCH CREW and the sprouts charging in from the left.
+{
+  const s = new WL.scenes.Play(WL.game, 0, { score: 48250, lives: 3, fart: 62 });
+  s.enter(); s.phase = 'play'; s.bannerT = 0; s.cards = []; s.tutorialT = 0; WL.game.scene = s;
+  s.camX = 40; s.objects = []; s.pickups = [];
+  const p = s.player; p.x = s.camX + 292; p.y = 300; p.facing = 1;
+  const put = (type, dx, dy, st, face, t) => { const e = s.spawnEnemy(type, p.x + dx, p.y + dy, {}); e.setState(st); e.facing = face; e.t = t; e.flash = 0; return e; };
+  const kale = put('broccoli', 62, -4, 'hurt', -1, 0);
+  put('carrot', -178, -40, 'approach', 1, 0.3); s.enemies[1].vx = 60;
+  put('sprout', -236, 8, 'approach', 1, 0.1); s.enemies[2].vx = 50;
+  put('sprout', -110, -58, 'approach', 1, 0.55); s.enemies[3].vx = 50;
+  put('sprout', 120, 40, 'approach', -1, 0.2); s.enemies[4].vx = -50;
+  p.setState('throw'); p.stateT = 0.02; p.t = 1.3; p.hasToolbox = true;
+  p.comboCount = 12; p.comboDisplayT = 2; p.comboPop = 0; p.lastToolT = 0;
+  const hx = p.x + 50, hy = p.y - 78;
+  s.fx.spark(hx + 8, hy, false); s.fx.impactRing(hx, hy + 30, true);
+  s.fx.foodDebris(hx, hy, 'broccoli', kale.y, true); s.fx.burst(hx + 6, hy + 10, 'broccoli', kale.y); s.fx.debris(hx + 30, hy + 40, 'plates', kale.y + 10);
+  for (let k = 0; k < 7; k++) s.fx.update(1 / 60);
+  s.fx.spark(hx + 8, hy + 2, false);
+  s.fx.update(0.05);
+  s.flashT = 0; s.shakeX = s.shakeY = 0; s.punchX = s.punchY = 0; s.lightingPulse = 0.2;
+  frame(() => s.draw(ctx)); save('00-concept-moment'); shots.push('00-concept-moment');
+}
 // Lido deck mid-fight
 let s = stageFight(0);
 frame(() => s.draw(ctx)); save('02-lido-midfight'); shots.push('02-lido-midfight');
 {
-  const sky = avg(160, 60, 300, 20);
-  check(sky[2] > 150 && lum(sky) > 120, 'lido sky is bright blue: ' + sky.map(v => v | 0));
+  // Share of clear daylight-blue pixels in the sky band (clouds and Diamond Head sit in it too).
+  const rsx = WL.display.renderScale, band = ctx.getImageData(0, Math.round(20 * rsx), canvas.width, Math.round(80 * rsx)).data;
+  let blue = 0;
+  for (let i = 0; i < band.length; i += 4) if (band[i + 2] > 170 && band[i + 2] > band[i] + 40 && lum([band[i], band[i + 1], band[i + 2]]) > 110) blue++;
+  check(blue / (band.length / 4) > 0.1, 'lido sky is bright blue: ' + (100 * blue / (band.length / 4)).toFixed(0) + '% blue sky');
   // No opaque full-width bar across the top: sky shows between HUD pieces.
   const gap = avg(238, 30, 6, 8);
   check(lum(avg(432, 4, 14, 5)) > 70, 'sky shows between the logo and the tracker');

@@ -442,20 +442,41 @@
      sky + Diamond Head (0.04) | ocean + sailboats (0.1) | superstructure, pool
      crowd and sun deck plates (0.45) | polished teak (1.0) with the buffet line
      (0.78) and its reflection | deck props | a soft foreground (1.3). */
-  const FAR_W = 880, FAR_SPLIT = 0.5, FAR_SHORE = 108;
+  const FAR_W = 880, SKY_W = 560, FAR_SPLIT = 0.522, FAR_SHORE = 116;
   const MID_W = 420, MID_OVER = 26, MID_BASE = 192;
   const MID_SEQ = [['lido-mid-ship', 1], ['lido-mid-pool', 1], ['lido-mid-deck', 1], ['lido-mid-pool', -1], ['lido-mid-ship', 1]];
   const BUFFET_W = 224, BUFFET_AT = [420, 1330, 2060], BUFFET_BASE = WALL_BASE + 11;
   const DECK_PROPS = [['bush', 118, 0.95], ['bush', 905, 0.9], ['platesStack', 1180, 1.1], ['bush', 1640, 1], ['bush', 2330, 0.95]];
   const FG = [['bush', 360, 1.9], ['platesStack', 1210, 1.9], ['bush', 1980, 2.1], ['bush', 2900, 1.9]];
+  /* Settled salad-bar wreckage on the teak: seeded, scrolls with the deck. */
+  const CLUTTER = (() => {
+    const r = U.seeded(4242), kinds = ['lettuce', 'tomato', 'floret', 'floret2', 'cucumber', 'cherry', 'fork', 'shard', 'coin', 'kale', 'spoon', 'shard2', 'crouton'];
+    const out = [];
+    for (let x = 60; x < 2700; x += 16 + r() * 40) out.push([kinds[Math.floor(r() * kinds.length)], x, FT + 6 + r() * (FB - FT), r() * 6.28, 1.1 + r() * 0.8]);
+    return out;
+  })();
   function lidoPainted() {
     return !!(WL.art.plate('lido-far') && WL.art.plate('lido-mid-ship') && WL.art.plate('lido-mid-pool') && WL.art.plate('lido-mid-deck') && WL.art.plate('lido-floor'));
   }
+  /* The far plate is cut at the waterline: the sky, Diamond Head and Waikiki are
+     drawn smaller and slower than the open water, which slides faster under them. */
   function farLayers() {
     const P = WL.ARTDATA.plates['lido-far'];
-    const k = FAR_W / P.w, fh = P.h * k, split = fh * FAR_SPLIT;
-    const sky = WL.art.plateLayer('lido-far', FAR_W, FAR_SHORE + 2, 2, 0, (g, img) => g.drawImage(img, 0, 0, P.w, P.h * FAR_SPLIT + 2 / k, 0, FAR_SHORE - split, FAR_W, split + 2));
-    const sea = WL.art.plateLayer('lido-far', FAR_W, fh - split, 2, 0, (g, img) => g.drawImage(img, 0, P.h * FAR_SPLIT, P.w, P.h * (1 - FAR_SPLIT), 0, 0, FAR_W, fh - split));
+    const sk = SKY_W / P.w, skyH = P.h * FAR_SPLIT * sk;
+    const k = FAR_W / P.w, seaH = P.h * (1 - FAR_SPLIT) * k;
+    // The skyline half is mirrored on the right; the city edge makes the seam invisible.
+    const sky = WL.art.plateLayer('lido-far', SKY_W * 2, FAR_SHORE + 3, 2, 0, (g, img) => {
+      const y0 = FAR_SHORE + 3 - skyH;
+      g.drawImage(img, 0, 0, P.w, P.h * FAR_SPLIT, 0, y0, SKY_W, skyH);
+      g.save(); g.translate(SKY_W * 2, 0); g.scale(-1, 1);
+      g.drawImage(img, 0, 0, P.w, P.h * FAR_SPLIT, 0, y0, SKY_W, skyH);
+      g.restore();
+      g.globalCompositeOperation = 'destination-out';
+      const f = g.createLinearGradient(0, FAR_SHORE - 4, 0, FAR_SHORE + 3);
+      f.addColorStop(0, 'rgba(0,0,0,0)'); f.addColorStop(1, 'rgba(0,0,0,1)');
+      g.fillStyle = f; g.fillRect(0, FAR_SHORE - 4, SKY_W * 2, 7);
+    }, '-sky');
+    const sea = WL.art.plateLayer('lido-far', FAR_W, seaH, 2, 0, (g, img) => g.drawImage(img, 0, P.h * FAR_SPLIT, P.w, P.h * (1 - FAR_SPLIT), 0, 0, FAR_W, seaH), '-sea');
     return { sky, sea };
   }
   function midLayer(name, dir) {
@@ -491,8 +512,8 @@
     const G = WL.gfx, rich = !WL.perf.lite;
     const sunX = 566 - camX * 0.02;
     const far = farLayers();
-    G.tile(ctx, far.sky, camX * 0.04 + 30, 0);
-    G.tile(ctx, far.sea, camX * 0.1 + 30, FAR_SHORE);
+    G.tile(ctx, far.sea, camX * 0.1 + 30, FAR_SHORE - 2);
+    G.tile(ctx, far.sky, camX * 0.03 + 20, 0);
     if (rich) {
       // sun glitter on the water, under the sun
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -551,6 +572,13 @@
     }
     // planters and the HOT FOOD caution signs along the back of the fight lane
     if (WL.art.has('props')) {
+      for (const [f, wx, wy, rot, sc] of CLUTTER) {
+        const x = wx - camX;
+        if (x < -12 || x > W + 12) continue;
+        ctx.save(); ctx.translate(x, wy); ctx.scale(1, 0.62); ctx.rotate(rot);
+        WL.art.draw(ctx, 'props', f, 0, 0, { sx: sc, sy: sc, alpha: 0.95 });
+        ctx.restore();
+      }
       for (const [f, wx, sc] of DECK_PROPS) {
         const x = wx - camX;
         if (x < -60 || x > W + 60) continue;

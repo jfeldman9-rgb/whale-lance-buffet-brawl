@@ -23,11 +23,11 @@ OUT = os.path.join(ROOT, 'assets', 'art')
 # World height (640x360 px) of the reference standing frame of each character,
 # and how many atlas pixels to keep per world pixel (4 = crisp at 1440p).
 CHARS = {
-    'lance':    {'ref': 'idle', 'h': 104, 'ppw': 4.0},
-    'broccoli': {'ref': 'idle', 'h': 80,  'ppw': 4.0},
-    'carrot':   {'ref': 'idle', 'h': 74,  'ppw': 4.0},
-    'sprout':   {'ref': 'idle', 'h': 44,  'ppw': 4.0},
-    'celery':   {'ref': 'idle', 'h': 92,  'ppw': 4.0},
+    'lance':    {'ref': 'idle', 'h': 110, 'ppw': 4.0},
+    'broccoli': {'ref': 'idle', 'h': 88,  'ppw': 4.0},
+    'carrot':   {'ref': 'idle', 'h': 82,  'ppw': 4.0},
+    'sprout':   {'ref': 'idle', 'h': 46,  'ppw': 4.0},
+    'celery':   {'ref': 'idle', 'h': 94,  'ppw': 4.0},
 }
 
 # sheet file -> (character, frame names left to right, facing of the painted figures)
@@ -173,10 +173,12 @@ PROP_SHEETS = [
     ('lido-props', [('caution', 44), ('bush', 60), ('platesStack', 30), ('cart', 44), ('lounger', 30)]),
     ('lido-items', [('beans', 20), ('chili', 14), ('leftovers', 14), ('burger', 16), ('turkey', 15), ('chip', 13),
                     ('toolbox', 16), ('coffee', 17), ('tray', 34), ('cooler', 28), ('crate', 34), ('chair', 42)]),
+    ('combo-font', [('d' + str(i), 24) for i in range(10)] + [('hit', 14), ('combo', 14)]),
     ('lido-debris', [(n, 12) for n in ['floret', 'floret2', 'lettuce', 'kale', 'tomato', 'cherry', 'coin', 'stick', 'cucumber',
                                          'sproutHalf', 'shard', 'shard2', 'fork', 'spoon', 'radish', 'pepper', 'splash', 'crouton']]),
 ]
-DEBRIS = {n for n, _ in PROP_SHEETS[2][1]}
+DEBRIS = {n for n, _ in PROP_SHEETS[3][1]}
+MERGE = {'combo-font': 5}  # letters of a word are one glyph
 # Painted plates: name -> (keyed?, max output width, feathered side edges in px)
 PLATES = {
     'lido-far': (False, 1600, 0),
@@ -203,9 +205,9 @@ def reading_order(figs_with_pos):
     return [it[2] for row in rows for it in sorted(row, key=lambda t: t[1])]
 
 
-def grid_figures(rgba, n):
+def grid_figures(rgba, n, merge=3):
     solid = rgba[..., 3] > 0.35
-    lab, cnt = ndimage.label(ndimage.binary_dilation(solid, iterations=3))
+    lab, cnt = ndimage.label(ndimage.binary_dilation(solid, iterations=merge))
     sizes = ndimage.sum(solid, lab, range(1, cnt + 1))
     big = [int(i) + 1 for i in np.argsort(sizes)[::-1][:n]]
     boxes = ndimage.find_objects(lab)
@@ -225,7 +227,7 @@ def to_image(rgba):
 def bake_props(table):
     packed = []
     for sheet, names in PROP_SHEETS:
-        figs = grid_figures(key_out(load_src(sheet)), len(names))
+        figs = grid_figures(key_out(load_src(sheet)), len(names), MERGE.get(sheet, 3))
         for (name, wh), crop in zip(names, figs):
             im = to_image(crop)
             k = wh * 4.0 / (im.height if name not in DEBRIS else max(im.width, im.height))
