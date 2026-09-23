@@ -60,8 +60,9 @@ const done = code => { chrome.kill('SIGKILL'); process.exit(code); };
     p.state = 'attack'; p.attack = { pose: 'smash', dur: 0.32, windUntil: 0.05, reach: 52, dmg: 7 }; p.stateT = 0.14;
     p.comboCount = 12; p.comboDisplayT = 3; p.comboPop = 0.8;
     const b = s.spawnEnemy('broccoli', p.x + 60, p.y, { side: 1 }); b.setState('hurt'); b.stateT = 0.1; b.hp = 40;
-    s.spawnEnemy('carrot', p.x + 170, p.y - 45, { side: 1 });
-    s.spawnEnemy('sprout', p.x - 90, p.y + 25, { side: -1 });
+    for (const [t, dx, dy, f] of [['carrot', 170, -45, -1], ['sprout', -95, 25, 1], ['sprout', 120, 45, -1]]) {
+      const e = s.spawnEnemy(t, p.x + dx, p.y + dy, { side: 1 }); e.x = p.x + dx; e.y = p.y + dy; e.facing = f; e.setState('approach');
+    }
     s.fx.spark(p.x + 50, p.y - 45, true); s.fx.foodDebris(p.x + 50, p.y - 45, 'broccoli');
     s.update = function () {};
   `);
