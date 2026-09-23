@@ -61,6 +61,7 @@
       if (this.msgT > 0) this.msgT -= dt || 1 / 60;
       if (this.listening) {
         if (!WL.input.capturing) this.listening = null;
+        else if (inp.pressed.click) { WL.input.cancelCapture(); this.listening = null; this.flash('CANCELLED'); }
         return null;
       }
       if (inp.pressed.pause) { A.sfx.blip(); return 'back'; }
@@ -170,7 +171,7 @@
         T.draw(ctx, listenP ? (blink ? 'PRESS BUTTON' : '') : ST.padFor(r.id), px, y, { size: 7, align: 'center', color: listenP ? '#9f3' : (ST.PAD_ACTIONS.includes(r.id) ? '#fff' : '#789') });
       });
       if (this.listening) {
-        const how = this.listening.pad ? 'START CANCELS' : 'ESC CANCELS';
+        const how = this.listening.pad ? 'START OR A TAP CANCELS' : 'ESC OR A CLICK CANCELS';
         T.draw(ctx, `REMAPPING ${ST.ACTION_NAMES[this.listening.action]}.  ${how}.`, W / 2, H - 64, { size: 6, align: 'center', color: '#9f3' });
       } else {
         T.draw(ctx, 'ENTER / START / MENU KEYS AND M, \\ STAY FIXED SO YOU CAN ALWAYS GET BACK.', W / 2, H - 64, { size: 5, align: 'center', color: '#789' });

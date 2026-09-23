@@ -80,7 +80,7 @@
         const r = this.sub.update(inp, dt);
         if (r === 'settings') this.sub = new WL.OptionsPanel('options', { full: true });
         else if (r === 'controls') this.sub = new WL.OptionsPanel('controls');
-        else if (r === 'back') this.sub = null;
+        else if (r === 'back') this.sub = this.sub instanceof SettingsHub ? null : this.hub;
         return;
       }
       if (this.showHelp) { if (anyPress(inp) || inp.pressed.pause) { this.showHelp = false; A.sfx.blip(); } return; }
@@ -101,7 +101,7 @@
       if (id === 'continue') this.game.continueRun(this.run);
       else if (id === 'new') { WL.settings.clearRun(); this.game.startNewGame(true); }
       else if (id === 'skip') { WL.settings.clearRun(); this.game.startNewGame(false); }
-      else if (id === 'settings') this.sub = new SettingsHub();
+      else if (id === 'settings') this.sub = this.hub = new SettingsHub();
       else this.showHelp = true;
     }
     draw(ctx) {
@@ -1135,13 +1135,22 @@
       const hot = temp >= 90 ? '#ff5a3a' : temp >= 80 ? '#ffb020' : '#8fd4ff';
       T.draw(ctx, `${L.short || L.name}  ${temp}°F`, W - 8, 31, { size: 6, align: 'right', color: hot });
       ctx.restore();
-      // stage progress & coin-op wave indicator
-      const cx = big ? 420 : W / 2;
+      // stage progress & coin-op wave indicator. LARGE has no room between
+      // the scaled blocks (the pause button lives there), so it tucks the
+      // line under the score, clear of the centered boss bar.
       const prog = U.clamp(this.camX / Math.max(1, L.length - W), 0, 1);
-      D.bar(ctx, cx - 60, big ? 44 : 36, 120, big ? 4 : 3, prog, '#ffe14a', '#333');
       const totalWaves = L.waves ? L.waves.length : 1;
       const currentWaveNum = Math.min(this.waveIdx + 1, totalWaves);
-      T.draw(ctx, `STAGE ${L.id} • WAVE ${currentWaveNum}/${totalWaves}`, cx, big ? 30 : 25, { size: big ? 7 : 6, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+      const stageLine = `STAGE ${L.id} • WAVE ${currentWaveNum}/${totalWaves}`;
+      if (big) {
+        const tw = T.width(ctx, stageLine, 7);
+        D.fillRRect(ctx, W - 14 - Math.max(tw, 120), hb + 3, Math.max(tw, 120) + 8, 20, 3, 'rgba(8,10,22,0.72)', null);
+        T.draw(ctx, stageLine, W - 8, hb + 5, { size: 7, align: 'right', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+        D.bar(ctx, W - 8 - 120, hb + 16, 120, 3, prog, '#ffe14a', '#333');
+      } else {
+        D.bar(ctx, W / 2 - 60, 36, 120, 3, prog, '#ffe14a', '#333');
+        T.draw(ctx, stageLine, W / 2, 25, { size: 6, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+      }
       const dy = hb - 44;
 
       // combo — ranks, not a generic "FIGHT"
@@ -1167,7 +1176,7 @@
       }
       if (this.bannerT <= 0 && this.cards.length) {
         const c = this.cards[0];
-        const cy = (this.boss ? 124 : 78) + dy;
+        const cy = (this.boss ? 124 : 78) + dy + (big ? 14 : 0);
         T.draw(ctx, c.name, W - 10, cy, { size: 7, align: 'right', color: '#ffe14a', stroke: '#000', strokeWidth: 3 });
         T.draw(ctx, c.line, W - 10, cy + 12, { size: 6, align: 'right', color: '#fff', stroke: '#000', strokeWidth: 3 });
       }
@@ -1322,13 +1331,13 @@
     draw(ctx) {
       ctx.fillStyle = '#05050f'; ctx.fillRect(0, 0, W, H);
       D.vignette(ctx, 0.7);
-      S.drawLance(ctx, W / 2 - 60, 206, { pose: 'down', t: this.t, facing: 1 });
+      S.drawLance(ctx, W / 2 - 60, 194, { pose: 'down', t: this.t, facing: 1 });
       // froyo taunting
-      S.drawEnemy(ctx, W / 2 + 60, 206, { type: 'froyo', pose: 'idle', t: this.t, facing: -1 });
+      S.drawEnemy(ctx, W / 2 + 60, 194, { type: 'froyo', pose: 'idle', t: this.t, facing: -1 });
       T.draw(ctx, 'GAME OVER', W / 2, 44, { size: 28, align: 'center', gradient: ['#fff', '#e03020'], stroke: '#000', strokeWidth: 6 });
       T.draw(ctx, '"The buffet sends its regards."', W / 2, 86, { size: 7, align: 'center', color: '#f9c' });
       T.draw(ctx, `SCORE ${U.pad(this.score, 7)}`, W / 2, 104, { size: 10, align: 'center', color: '#ffe14a' });
-      T.draw(ctx, `CONTINUE?  ${this.count}`, W / 2, 218, { size: 14, align: 'center', color: Math.floor(this.t * 4) % 2 ? '#fff' : '#ffe14a', stroke: '#000', strokeWidth: 4 });
+      T.draw(ctx, `CONTINUE?  ${this.count}`, W / 2, 222, { size: 14, align: 'center', color: Math.floor(this.t * 4) % 2 ? '#fff' : '#ffe14a', stroke: '#000', strokeWidth: 4 });
       this.items.forEach((it, i) => {
         const sel = i === this.sel;
         T.draw(ctx, (sel ? '> ' : '  ') + it.label, W / 2, 246 + i * 18, { size: 8, align: 'center', color: sel ? '#ffe14a' : '#ccd' });

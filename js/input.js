@@ -387,11 +387,15 @@ WL.input = (function () {
   function arrowsIntact() {
     return KEYMAP.ArrowUp === 'up' && KEYMAP.ArrowDown === 'down' && KEYMAP.ArrowLeft === 'left' && KEYMAP.ArrowRight === 'right';
   }
+  // Legends list the physical bindings even on a touch device (a phone with
+  // a keyboard or pad attached should still see the truth).
   function legend() {
     if (gamepad.connected) {
-      return `PAD: STICK MOVE   ${hint('attack')} ATK   ${hint('jump')} JUMP   ${hint('special')} SPRAY   ${hint('tool')} BOX   ${hint('fart')} FART   START PAUSE`;
+      const p = id => ST.padFor(id);
+      return `PAD: STICK MOVE   ${p('attack')} ATK   ${p('jump')} JUMP   ${p('special')} SPRAY   ${p('tool')} BOX   ${p('fart')} FART   START PAUSE`;
     }
-    return `${moveHint()} MOVE   ${hint('attack')} ATK   ${hint('jump')} JUMP   ${hint('special')} SPRAY   ${hint('tool')} BOX   ${hint('fart', 1)} FART`;
+    const k = (id, n) => ST.keysFor(id, n || 2).join('/') || '--';
+    return `${moveHint()} MOVE   ${k('attack')} ATK   ${k('jump')} JUMP   ${k('special')} SPRAY   ${k('tool')} BOX   ${k('fart', 1)} FART`;
   }
   function beginCapture(kind, cb) {
     capture = { kind, cb, armed: false };
