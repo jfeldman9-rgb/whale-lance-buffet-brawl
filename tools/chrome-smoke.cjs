@@ -55,7 +55,10 @@ const done = code => { chrome.kill('SIGKILL'); server.kill('SIGKILL'); process.e
   check(await js('return WL.game.scene instanceof WL.scenes.Title'), 'boots to the title');
   check(await js(`return !!WL.art.plate('lido-far') && WL.art.has('lance')`), 'painted atlases and plates load over HTTP');
   const stamp = await js(`return [...document.scripts].map(s => (s.src.match(/v=([\\w-]+)/) || [])[1]).filter(Boolean)`);
-  check(stamp.length > 5 && stamp.every(v => v === '20260923-gfx2'), 'every script served with ?v=20260923-gfx2');
+  check(stamp.length > 5 && stamp.every(v => v === '20260923-gfx2b'), 'every script served with ?v=20260923-gfx2b');
+  const imgs = await js(`return performance.getEntriesByType('resource').map(e => e.name).filter(n => /assets\\/art\\//.test(n))`);
+  check(imgs.length >= 15 && imgs.every(n => /\\?v=20260923-gfx2b/.test(n)), 'painted art requested with ?v=20260923-gfx2b', imgs.length + ' art requests');
+  check((await js('return WL.assets.criticalMissing().length')) === 0, 'no critical painted art missing, no failure banner');
 
   // Watch what the touch/mouse layer draws so the BOX badge can be checked.
   await js(`
@@ -137,6 +140,24 @@ const done = code => { chrome.kill('SIGKILL'); server.kill('SIGKILL'); process.e
   await shot('perf-1280x720');
   const errs = await js('return window.__errors');
   check(!errs.length, 'no page errors', errs.join(' | '));
+
+  // A painted file that won't load is retried once, then reported on screen.
+  await send('Network.enable');
+  await send('Network.setBlockedURLs', { urls: ['*lido-far.webp*', '*lance.webp*'] });
+  const warns = [];
+  await send('Runtime.enable');
+  ws.addEventListener('message', e => { const m = JSON.parse(e.data); if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'warning') warns.push(m.params.args.map(a => a.value).join(' ')); });
+  await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/index.html` });
+  for (let i = 0; i < 200; i++) { if (await js('return !!(window.WL && WL.game && WL.game.scene instanceof WL.scenes.Title)').catch(() => false)) break; await sleep(100); }
+  await sleep(400);
+  const miss = await js('return WL.assets.criticalMissing()');
+  const retried = await js(`return performance.getEntriesByType('resource').filter(e => /lido-far\\.webp/.test(e.name)).map(e => e.name)`);
+  check(miss.includes('art:lance') && miss.includes('plate:lido-far'), 'blocked lance/lido-far are reported missing', miss.join(', '));
+  check(warns.some(w => /painted art failed/.test(w)), 'console.warn names the failed keys', warns.join(' | '));
+  const red = await js(`const c = document.querySelector('canvas'), g = c.getContext('2d'), s = c.width / WL.W, d = g.getImageData(Math.round(WL.W / 2 * s) - 100, Math.round(99 * s), 200, 4).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 90 && d[i + 1] < 40 && d[i + 2] < 40) n++; return n / (d.length / 4);`);
+  check(red > 0.3, 'PAINTED ART FAILED TO LOAD banner is on the title', 'red ' + red.toFixed(2));
+  await shot('art-failed-banner');
+  await send('Network.setBlockedURLs', { urls: [] });
   console.log(failed ? `${failed} check(s) failed` : 'Chrome smoke: all checks passed');
   ws.close();
   done(failed ? 1 : 0);

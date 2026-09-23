@@ -16,7 +16,7 @@ function boot(width,height,dpr,coarse,storage){
     addEventListener:(k,fn)=>(listeners[k]??=[]).push(fn),navigator:{maxTouchPoints:coarse?5:0,getGamepads:()=>[]},
     localStorage:storage||memStore(),location:{hash:''},requestAnimationFrame:fn=>context.frame=fn,
     document:{getElementById:()=>canvas,createElement:()=>createCanvas(1,1),addEventListener:(k,fn)=>(dl[k]??=[]).push(fn),fonts:{load:()=>Promise.resolve()}},
-    Image:class{set src(src){try{const im=new Image();im.src=fs.readFileSync(root+'/'+src);this.width=im.width;this.height=im.height;this.onload?.()}catch{this.onerror?.()}}}
+    Image:class{set src(src){try{const im=new Image();im.src=fs.readFileSync(root+'/'+src.split('?')[0]);this.width=im.width;this.height=im.height;this.onload?.()}catch{this.onerror?.()}}}
   };context.window=context;vm.createContext(context);
   for(const f of scriptList())vm.runInContext(fs.readFileSync(root+'/js/'+f+'.js','utf8'),context,{filename:f+'.js'});
   // Images above test loading/fallback, not cutscene raster composition.

@@ -4,6 +4,10 @@
 
 WL.assets = (function () {
   const images = {};
+  // Image URLs carry the same ?v= stamp as the scripts, so a cached 404 or stale
+  // file from an older deploy can't pin the procedural fallback.
+  const cs = typeof document !== 'undefined' && document.currentScript;
+  const VER = WL.ASSET_VER = (cs && (cs.src.match(/[?&]v=([^&#]+)/) || [])[1]) || '20260923-gfx2b';
   const manifest = {
     // Opening cutscene panels (in story order)
     cut1: 'assets/cutscenes/cutscene-01-ac-out.png',
@@ -21,22 +25,42 @@ WL.assets = (function () {
   const art = WL.ARTDATA || {};
   for (const k of Object.keys(art)) if (k !== 'plates') manifest['art:' + k] = art[k].src;
   for (const k of Object.keys(art.plates || {})) manifest['plate:' + k] = art.plates[k].src;
+  // Without these the Lido and Lance silently turn procedural, so a miss is reported.
+  const CRITICAL = ['art:lance', 'plate:lido-far', 'plate:lido-mid-ship', 'plate:lido-mid-pool', 'plate:lido-mid-deck', 'plate:lido-floor'];
+  const painted = k => k.startsWith('art:') || k.startsWith('plate:');
 
   let loaded = 0, total = 0, done = false;
+  const failed = [];
+
+  function fetchImage(url) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  }
 
   function load(onProgress) {
     const keys = Object.keys(manifest);
     total = keys.length;
-    return Promise.all(keys.map(k => new Promise(resolve => {
-      const img = new Image();
-      img.onload = () => { images[k] = img; loaded++; onProgress && onProgress(loaded / total); resolve(); };
-      img.onerror = () => { images[k] = null; loaded++; onProgress && onProgress(loaded / total); resolve(); };
-      img.src = manifest[k];
-    }))).then(() => { done = true; });
+    return Promise.all(keys.map(async k => {
+      const url = manifest[k] + '?v=' + VER;
+      let img = await fetchImage(url);
+      if (!img && painted(k)) img = await fetchImage(url + '&r=' + Date.now());
+      images[k] = img;
+      if (!img && painted(k)) failed.push(k);
+      loaded++; onProgress && onProgress(loaded / total);
+    })).then(() => {
+      done = true;
+      if (failed.length && typeof console !== 'undefined') console.warn('[WL] painted art failed to load (after retry):', failed.join(', '));
+    });
   }
 
   function get(key) { return images[key] || null; }
   function has(key) { return !!images[key]; }
+  /** Critical painted-art keys that are still missing after load (empty when all is well). */
+  function criticalMissing() { return done ? CRITICAL.filter(k => manifest[k] && !images[k]) : []; }
 
-  return { load, get, has, _img: k => images[k] || null, get progress() { return total ? loaded / total : 0; }, get done() { return done; } };
+  return { load, get, has, VER, criticalMissing, failed: () => failed.slice(), _img: k => images[k] || null, get progress() { return total ? loaded / total : 0; }, get done() { return done; } };
 })();

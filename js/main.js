@@ -40,6 +40,7 @@
     _swap() {
       if (this.scene && this.scene.exit) this.scene.exit();
       this.scene = this.nextScene; this.nextScene = null;
+      this.sceneAt = performance.now();
       if (this.scene.enter) this.scene.enter();
     },
     /* ---- flow ---- */
@@ -229,9 +230,22 @@
     document.fonts.load(`8px ${WL.FONT}`).catch(() => {}),
     new Promise(resolve => setTimeout(resolve, 1500))
   ]) : Promise.resolve();
+  let artMissing = [];
   Promise.all([WL.assets.load(p => { progress = p; }), fontReady]).then(() => {
+    artMissing = WL.assets.criticalMissing();
     loading = false; game.setScene(new WL.scenes.Title(game));
   });
+  /* Missing painted art still plays (procedural fallback) but must never look intentional. */
+  function drawArtWarning() {
+    const onTitle = game.scene instanceof WL.scenes.Title;
+    if (!onTitle && performance.now() - (game.sceneAt || 0) > 12000) return;
+    const T = WL.text, D = WL.draw;
+    const list = artMissing.length <= 2 ? artMissing.map(k => k.split(':')[1]).join(', ') : artMissing.length + ' FILES (SEE CONSOLE)';
+    const w = 300, x = W / 2 - w / 2, y = 96;
+    D.fillRRect(ctx, x, y, w, 30, 4, 'rgba(120,0,0,0.88)', '#ffd23f');
+    T.draw(ctx, 'PAINTED ART FAILED TO LOAD', W / 2, y + 5, { size: 8, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+    T.draw(ctx, 'HARD REFRESH (CTRL+SHIFT+R)  MISSING: ' + list.toUpperCase(), W / 2, y + 18, { size: 4.5, align: 'center', color: '#fff', shadow: false });
+  }
 
   /* ---- loop ---- */
   let last = performance.now();
@@ -270,6 +284,7 @@
       if (game.fadeDir !== 1) game.scene.update(dt, WL.input);
       game.scene.draw(ctx);
     }
+    if (!loading && artMissing.length && game.scene) drawArtWarning();
     if (game.fade > 0) { ctx.fillStyle = `rgba(0,0,0,${game.fade})`; ctx.fillRect(0, 0, W, H); }
     if (WL.audio.muted) WL.text.draw(ctx, 'MUTE', W - 6, H - 10, { size: 6, align: 'right', color: '#aaa' });
     if (window.location.hash === '#fps') {
