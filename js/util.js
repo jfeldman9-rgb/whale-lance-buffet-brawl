@@ -22,6 +22,52 @@ WL.display = {
   resize: null
 };
 
+/* World light for the current stage. side: +1 = key light from screen right.
+   Sprites flip with ctx.scale(-1, 1), so they use side * facing locally.
+   cast: opacity of the hard sun shadow (0 = overhead / soft only). */
+WL.light = {
+  side: 1, cast: 0.3, key: 'rgba(255,244,210,0.55)', rim: 'rgba(255,250,225,0.9)', shade: 'rgba(40,18,60,0.26)',
+  set(o) { Object.assign(this, { side: 1, cast: 0.3, key: 'rgba(255,244,210,0.55)', rim: 'rgba(255,250,225,0.9)', shade: 'rgba(40,18,60,0.26)' }, o || {}); }
+};
+
+/* Offscreen layer cache. Static art (skyline, deck tiles, loungers) is
+   painted once per render scale and blitted, instead of re-running hundreds
+   of path ops per frame on a 4K backing store. maxScale caps resolution:
+   distant layers are cached softer on purpose, which reads as depth of field. */
+WL.gfx = {
+  _c: {},
+  scale(maxScale) {
+    const rs = WL.display.mode === 'classic' ? 1 : (WL.display.renderScale || 1);
+    return Math.max(1, Math.min(rs, maxScale || rs));
+  },
+  layer(key, w, h, maxScale, paint) {
+    const s = this.scale(maxScale);
+    let e = this._c[key];
+    if (!e || e.s !== s) {
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.ceil(w * s)); c.height = Math.max(1, Math.ceil(h * s));
+      const g = c.getContext('2d');
+      g.setTransform(s, 0, 0, s, 0, 0);
+      g.imageSmoothingEnabled = true;
+      paint(g, w, h);
+      e = this._c[key] = { c, s, w, h };
+    }
+    return e;
+  },
+  snap(v) {
+    const rs = WL.display.mode === 'classic' ? 1 : (WL.display.renderScale || 1);
+    return Math.round(v * rs) / rs;
+  },
+  blit(ctx, e, x, y) { ctx.drawImage(e.c, this.snap(x), this.snap(y), e.w, e.h); },
+  /** Repeat a seamless tile horizontally; scroll = world offset in px. */
+  tile(ctx, e, scroll, y) {
+    let x = -(((scroll % e.w) + e.w) % e.w);
+    // One device pixel of overlap hides seams from fractional placement.
+    const ov = 1 / Math.max(1, WL.display.renderScale || 1);
+    for (; x < WL.W; x += e.w) ctx.drawImage(e.c, this.snap(x), this.snap(y), e.w + ov, e.h);
+  }
+};
+
 const U = WL.util = {
   clamp(v, a, b) { return v < a ? a : v > b ? b : v; },
   lerp(a, b, t) { return a + (b - a) * t; },
@@ -160,6 +206,17 @@ WL.draw = {
     const spr = WL.draw._shadowSprite();
     if (spr) {
       const a0 = ctx.globalAlpha;
+      const L = WL.light;
+      // Hard-edged cast shadow thrown away from the sun, under the soft contact blob.
+      if (L.cast > 0 && !WL.perf.lite) {
+        const hard = WL.draw._hardShadowSprite();
+        if (hard) {
+          const len = (1.2 + (z || 0) / 90) * srx;
+          const cx = x - L.side * len * 0.55 + (z || 0) * -L.side * 0.2;
+          ctx.globalAlpha = a0 * L.cast * s;
+          ctx.drawImage(hard, cx - len, y - sry * 0.9, len * 2, sry * 1.8);
+        }
+      }
       ctx.globalAlpha = a0 * a;
       ctx.drawImage(spr, x - srx, y - sry, srx * 2, sry * 2);
       ctx.globalAlpha = a0;
@@ -193,6 +250,25 @@ WL.draw = {
     } catch (e) { this._shadow = null; }
     return this._shadow;
   },
+  _hardShadowSprite() {
+    if (this._hard !== undefined) return this._hard;
+    this._hard = null;
+    try {
+      const c = document.createElement('canvas');
+      c.width = 64; c.height = 32;
+      const g = c.getContext('2d');
+      const grad = g.createRadialGradient(32, 16, 0, 32, 16, 32);
+      grad.addColorStop(0, 'rgba(20,10,30,1)');
+      grad.addColorStop(0.78, 'rgba(20,10,30,0.92)');
+      grad.addColorStop(0.92, 'rgba(20,10,30,0.35)');
+      grad.addColorStop(1, 'rgba(20,10,30,0)');
+      g.setTransform(1, 0, 0, 0.5, 0, 0);
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 64);
+      this._hard = c;
+    } catch (e) { this._hard = null; }
+    return this._hard;
+  },
   /** Diagonal stripes: a shape cue for "low" that doesn't rely on hue. */
   hatch(ctx, x, y, w, h, color) {
     if (w <= 0 || h <= 0) return;
@@ -221,31 +297,36 @@ WL.draw = {
   arcadeBar(ctx, x, y, w, h, pct, ghostPct, fg, ghostCol, bg) {
     pct = U.clamp(pct, 0, 1);
     ghostPct = U.clamp(ghostPct !== undefined ? ghostPct : pct, pct, 1);
-    ctx.fillStyle = '#06060c';
-    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
-    ctx.fillStyle = '#222638';
-    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-    ctx.fillStyle = bg || '#1e080a';
-    ctx.fillRect(x, y, w, h);
+    const r = Math.min(h / 2 + 2, 6);
+    // Brushed-metal bezel, then a recessed glass track.
+    const bez = ctx.createLinearGradient(0, y - 3, 0, y + h + 3);
+    bez.addColorStop(0, '#f3f5f8'); bez.addColorStop(0.45, '#8f97a6'); bez.addColorStop(1, '#3b4150');
+    WL.draw.rrect(ctx, x - 3, y - 3, w + 6, h + 6, r + 2); ctx.fillStyle = '#0b0d16'; ctx.fill();
+    WL.draw.rrect(ctx, x - 2, y - 2, w + 4, h + 4, r + 1); ctx.fillStyle = bez; ctx.fill();
+    ctx.save();
+    WL.draw.rrect(ctx, x, y, w, h, r); ctx.clip();
+    ctx.fillStyle = bg || '#1e080a'; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(x, y, w, Math.max(1, h * 0.3));
     if (ghostPct > 0) {
-      const gw = Math.max(1, Math.round(w * ghostPct));
       ctx.fillStyle = ghostCol || '#ffaa33';
-      ctx.fillRect(x, y, gw, h);
+      ctx.fillRect(x, y, Math.max(1, Math.round(w * ghostPct)), h);
     }
     if (pct > 0) {
       const bw = Math.max(1, Math.round(w * pct));
       ctx.fillStyle = fg;
       ctx.fillRect(x, y, bw, h);
-      ctx.fillStyle = 'rgba(255,255,255,0.42)';
-      ctx.fillRect(x, y, bw, Math.max(1, Math.floor(h * 0.35)));
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.fillRect(x, y + Math.floor(h * 0.7), bw, Math.ceil(h * 0.3));
+      const gl = ctx.createLinearGradient(0, y, 0, y + h);
+      gl.addColorStop(0, 'rgba(255,255,255,0.62)');
+      gl.addColorStop(0.42, 'rgba(255,255,255,0.12)');
+      gl.addColorStop(0.55, 'rgba(0,0,0,0.05)');
+      gl.addColorStop(1, 'rgba(0,0,0,0.38)');
+      ctx.fillStyle = gl; ctx.fillRect(x, y, bw, h);
+      // Hot leading edge.
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(x + bw - 1.5, y + 1, 1.5, h - 2);
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    for (let p = 0.2; p < 0.99; p += 0.2) {
-      const tx = Math.round(x + w * p);
-      ctx.fillRect(tx, y, 1, h);
-    }
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    for (let p = 0.1; p < 0.99; p += 0.1) ctx.fillRect(Math.round(x + w * p), y + h * 0.5, 1, h * 0.5);
+    ctx.restore();
   },
   stageLighting(ctx, stageId, pulse, t) {
     ctx.save();
@@ -253,14 +334,29 @@ WL.draw = {
     const W = WL.W, H = WL.H;
     const vig = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.75);
     if (stageId === 1) {
+      // Bright midday: a light edge falloff, not a dark tunnel.
       vig.addColorStop(0, 'rgba(255,240,200,0)');
-      vig.addColorStop(0.7, 'rgba(30,15,5,0.22)');
-      vig.addColorStop(1, `rgba(15,8,3,${0.5 + pulse * 0.25})`);
+      vig.addColorStop(0.75, 'rgba(40,20,10,0.08)');
+      vig.addColorStop(1, `rgba(30,14,6,${0.26 + pulse * 0.2})`);
       ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
-      const sun = ctx.createLinearGradient(0, 0, 0, 95);
-      sun.addColorStop(0, 'rgba(255,230,140,0.14)');
-      sun.addColorStop(1, 'rgba(255,230,140,0)');
-      ctx.fillStyle = sun; ctx.fillRect(0, 0, W, 95);
+      if (!WL.perf.lite) {
+        // Sun bloom from the upper right, added on top so it lifts rather than tints.
+        ctx.globalCompositeOperation = 'lighter';
+        const bloom = ctx.createRadialGradient(W * 0.86, 20, 0, W * 0.86, 20, W * 0.62);
+        bloom.addColorStop(0, 'rgba(255,236,170,0.34)');
+        bloom.addColorStop(0.35, 'rgba(255,210,130,0.10)');
+        bloom.addColorStop(1, 'rgba(255,200,120,0)');
+        ctx.fillStyle = bloom; ctx.fillRect(0, 0, W, H);
+        // Faint god rays slanting down-left across the deck.
+        ctx.globalAlpha = 0.05;
+        ctx.fillStyle = '#fff4d0';
+        for (let i = 0; i < 5; i++) {
+          const x0 = W * 0.96 - i * 70 + Math.sin((t || 0) * 0.3 + i) * 6;
+          ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0 + 26 + i * 4, 0); ctx.lineTo(x0 - 230 - i * 20, H); ctx.lineTo(x0 - 290 - i * 20, H); ctx.closePath(); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
     } else if (stageId === 2) {
       vig.addColorStop(0, 'rgba(0,20,30,0)');
       vig.addColorStop(0.7, 'rgba(5,15,22,0.32)');
