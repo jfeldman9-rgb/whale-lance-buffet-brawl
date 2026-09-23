@@ -3,7 +3,8 @@
    opening card 1, a between-stage StoryBeat and an ending beat, taken at a fixed
    time into each beat. With --video it also records a live-feel clip of the
    opening and the first StoryBeat through the CDP screencast (needs ffmpeg).
-   Usage: node tools/story-shots.cjs outDir [--video] [--at=2.6] */
+   --all shoots every opening beat, --beats one shot per WL.STORY beat.
+   Usage: node tools/story-shots.cjs outDir [--video] [--all] [--beats] [--at=2.6] */
 'use strict';
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
@@ -15,6 +16,7 @@ if (!out) { console.error('usage: node tools/story-shots.cjs outDir [--video]');
 fs.mkdirSync(out, { recursive: true });
 const VIDEO = process.argv.includes('--video');
 const ALL = process.argv.includes('--all');
+const BEATS = process.argv.includes('--beats');
 const AT = parseFloat((process.argv.find(a => a.startsWith('--at=')) || '--at=2.6').slice(5));
 const HTTP = 9165 + Math.floor(Math.random() * 400), CDP = HTTP + 1000;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -60,6 +62,19 @@ const done = code => { chrome.kill('SIGKILL'); server.kill('SIGKILL'); process.e
   const sceneTime = () => js('return (performance.now() - WL.game.sceneAt) / 1000');
   const waitScene = async secs => { while (await sceneTime() < secs) await sleep(30); };
 
+  if (BEATS) {
+    // One shot per beat in WL.STORY, each in its own reel.
+    const keys = await js('return Object.keys(WL.STORY)');
+    for (const k of keys) {
+      await js(`WL.game.setScene(new WL.scenes.StoryBeat(WL.game, { beats: [WL.STORY.${k}] }))`);
+      await sleep(250); await settle();
+      while (await js('return WL.game.scene.waiting || WL.game.scene.t < ' + AT)) await sleep(30);
+      await shot('beat-' + k);
+    }
+    ws.close();
+    done(0);
+    return;
+  }
   if (VIDEO) await send('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: 1920, maxHeight: 1080, everyNthFrame: 1 });
   await js('WL.game.startNewGame(true)');
   await settle();
