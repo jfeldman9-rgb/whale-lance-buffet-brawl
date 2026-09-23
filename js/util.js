@@ -40,16 +40,28 @@ WL.gfx = {
     const rs = WL.display.mode === 'classic' ? 1 : (WL.display.renderScale || 1);
     return Math.max(1, Math.min(rs, maxScale || rs));
   },
-  layer(key, w, h, maxScale, paint) {
+  /** blur (world px) softens distant layers once at paint time, for depth of field. */
+  layer(key, w, h, maxScale, paint, blur) {
     const s = this.scale(maxScale);
     let e = this._c[key];
     if (!e || e.s !== s) {
-      const c = document.createElement('canvas');
-      c.width = Math.max(1, Math.ceil(w * s)); c.height = Math.max(1, Math.ceil(h * s));
+      const make = () => {
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.ceil(w * s)); c.height = Math.max(1, Math.ceil(h * s));
+        return c;
+      };
+      let c = make();
       const g = c.getContext('2d');
       g.setTransform(s, 0, 0, s, 0, 0);
       g.imageSmoothingEnabled = true;
       paint(g, w, h);
+      if (blur && WL.display.mode !== 'classic' && 'filter' in g) {
+        const out = make();
+        const o = out.getContext('2d');
+        o.filter = `blur(${(blur * s).toFixed(2)}px)`;
+        o.drawImage(c, 0, 0);
+        c = out;
+      }
       e = this._c[key] = { c, s, w, h };
     }
     return e;
@@ -58,13 +70,31 @@ WL.gfx = {
     const rs = WL.display.mode === 'classic' ? 1 : (WL.display.renderScale || 1);
     return Math.round(v * rs) / rs;
   },
-  blit(ctx, e, x, y) { ctx.drawImage(e.c, this.snap(x), this.snap(y), e.w, e.h); },
+  /* A layer cached at the live render scale is copied 1:1 onto device
+     pixels with smoothing off: a plain blit, no resampling. Softer layers
+     are stretched with bilinear ('low') filtering, which is far cheaper than
+     the 'high' quality the main context uses for sprites. */
+  _begin(ctx, e) {
+    const rs = WL.display.mode === 'classic' ? 1 : (WL.display.renderScale || 1);
+    const exact = Math.abs(e.s - rs) < 1e-6;
+    this._sm = ctx.imageSmoothingEnabled; this._q = ctx.imageSmoothingQuality;
+    if (exact) ctx.imageSmoothingEnabled = false;
+    else { ctx.imageSmoothingEnabled = WL.display.mode !== 'classic'; ctx.imageSmoothingQuality = 'low'; }
+    return exact ? { w: e.c.width / rs, h: e.c.height / rs } : { w: e.w + 1 / rs, h: e.h };
+  },
+  _end(ctx) { ctx.imageSmoothingEnabled = this._sm; ctx.imageSmoothingQuality = this._q; },
+  blit(ctx, e, x, y) {
+    const d = this._begin(ctx, e);
+    ctx.drawImage(e.c, this.snap(x), this.snap(y), d.w, d.h);
+    this._end(ctx);
+  },
   /** Repeat a seamless tile horizontally; scroll = world offset in px. */
   tile(ctx, e, scroll, y) {
     let x = -(((scroll % e.w) + e.w) % e.w);
-    // One device pixel of overlap hides seams from fractional placement.
-    const ov = 1 / Math.max(1, WL.display.renderScale || 1);
-    for (; x < WL.W; x += e.w) ctx.drawImage(e.c, this.snap(x), this.snap(y), e.w + ov, e.h);
+    const d = this._begin(ctx, e);
+    const sy = this.snap(y);
+    for (; x < WL.W; x += e.w) ctx.drawImage(e.c, this.snap(x), sy, d.w, d.h);
+    this._end(ctx);
   }
 };
 
@@ -128,6 +158,27 @@ WL.text = {
     }
     ctx.fillText(str, x, y);
     ctx.restore();
+  },
+  /** Same as draw(), but the stroked glyphs are rasterized once into a small
+     bitmap and blitted afterwards. For HUD labels that repeat every frame. */
+  cached(ctx, str, x, y, opts = {}) {
+    const size = opts.size || 8;
+    const key = str + '|' + size + '|' + (opts.color || '') + '|' + (opts.gradient || '') + '|' + (opts.stroke || '') + '|' + (opts.strokeWidth || '') + '|' + (opts.shadow === false ? 0 : 1);
+    const cache = this._cache || (this._cache = new Map());
+    if (cache.size > 160) cache.clear();
+    let e = cache.get(key);
+    const s = WL.gfx.scale();
+    if (!e || e.s !== s) {
+      const pad = Math.ceil((opts.stroke ? (opts.strokeWidth || Math.max(2, size / 4)) : 0) / 2 + Math.max(1, size / 8) + 1);
+      const w = Math.ceil(this.width(ctx, str, size)) + pad * 2, h = Math.ceil(size * 1.25) + pad * 2;
+      e = WL.gfx.layer('txt' + key, w, h, undefined, g => this.draw(g, str, pad, pad, Object.assign({}, opts, { align: 'left' })));
+      e = { c: e.c, s: e.s, w: e.w, h: e.h, pad };
+      delete WL.gfx._c['txt' + key];
+      cache.set(key, e);
+    }
+    const tw = e.w - e.pad * 2;
+    const ax = opts.align === 'center' ? x - tw / 2 : opts.align === 'right' ? x - tw : x;
+    WL.gfx.blit(ctx, e, ax - e.pad, y - e.pad);
   },
   width(ctx, str, size) {
     ctx.save();
@@ -328,56 +379,28 @@ WL.draw = {
     for (let p = 0.1; p < 0.99; p += 0.1) ctx.fillRect(Math.round(x + w * p), y + h * 0.5, 1, h * 0.5);
     ctx.restore();
   },
+  // [rgb, mid stop, mid alpha, edge alpha, pulse boost]
+  VIGNETTE: { 1: ['30,14,6', 0.75, 0.08, 0.26, 0.2], 2: ['5,15,22', 0.7, 0.32, 0.62, 0.25], 3: ['10,35,30', 0.7, 0.22, 0.52, 0.25], 4: ['10,20,45', 0.7, 0.32, 0.65, 0.25] },
   stageLighting(ctx, stageId, pulse, t) {
-    ctx.save();
-    pulse = U.clamp(pulse || 0, 0, 1);
     const W = WL.W, H = WL.H;
+    pulse = U.clamp(pulse || 0, 0, 1);
+    const V = this.VIGNETTE[stageId];
+    if (!V) return;
+    ctx.save();
     const vig = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.75);
-    if (stageId === 1) {
-      // Bright midday: a light edge falloff, not a dark tunnel.
-      vig.addColorStop(0, 'rgba(255,240,200,0)');
-      vig.addColorStop(0.75, 'rgba(40,20,10,0.08)');
-      vig.addColorStop(1, `rgba(30,14,6,${0.26 + pulse * 0.2})`);
-      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
-      if (!WL.perf.lite) {
-        // Sun bloom from the upper right, added on top so it lifts rather than tints.
-        ctx.globalCompositeOperation = 'lighter';
-        const bloom = ctx.createRadialGradient(W * 0.86, 20, 0, W * 0.86, 20, W * 0.62);
-        bloom.addColorStop(0, 'rgba(255,236,170,0.34)');
-        bloom.addColorStop(0.35, 'rgba(255,210,130,0.10)');
-        bloom.addColorStop(1, 'rgba(255,200,120,0)');
-        ctx.fillStyle = bloom; ctx.fillRect(0, 0, W, H);
-        // Faint god rays slanting down-left across the deck.
-        ctx.globalAlpha = 0.05;
-        ctx.fillStyle = '#fff4d0';
-        for (let i = 0; i < 5; i++) {
-          const x0 = W * 0.96 - i * 70 + Math.sin((t || 0) * 0.3 + i) * 6;
-          ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0 + 26 + i * 4, 0); ctx.lineTo(x0 - 230 - i * 20, H); ctx.lineTo(x0 - 290 - i * 20, H); ctx.closePath(); ctx.fill();
-        }
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-      }
-    } else if (stageId === 2) {
-      vig.addColorStop(0, 'rgba(0,20,30,0)');
-      vig.addColorStop(0.7, 'rgba(5,15,22,0.32)');
-      vig.addColorStop(1, `rgba(2,8,14,${0.62 + pulse * 0.25})`);
-      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+    vig.addColorStop(0, `rgba(${V[0]},0)`);
+    vig.addColorStop(V[1], `rgba(${V[0]},${V[2]})`);
+    vig.addColorStop(1, `rgba(${V[0]},${V[3] + pulse * V[4]})`);
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+    if (stageId === 2) {
       if (Math.sin((t || 0) * 2) > 0) {
         ctx.fillStyle = 'rgba(255,140,20,0.03)';
         ctx.fillRect(0, 0, W, H);
       }
     } else if (stageId === 3) {
-      vig.addColorStop(0, 'rgba(200,255,245,0)');
-      vig.addColorStop(0.7, 'rgba(10,35,30,0.22)');
-      vig.addColorStop(1, `rgba(4,18,16,${0.52 + pulse * 0.25})`);
-      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(60,200,180,0.035)';
       ctx.fillRect(0, 0, W, H);
     } else if (stageId === 4) {
-      vig.addColorStop(0, 'rgba(210,240,255,0)');
-      vig.addColorStop(0.7, 'rgba(10,20,45,0.32)');
-      vig.addColorStop(1, `rgba(4,10,28,${0.65 + pulse * 0.25})`);
-      ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(140,210,255,0.05)';
       ctx.fillRect(0, 0, W, H);
     }

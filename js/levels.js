@@ -180,12 +180,12 @@
     g.fillStyle = '#16356b'; g.fillRect(sx, top + 24, sw, 5);
     g.fillStyle = '#c8322a'; g.fillRect(sx, top + 30, sw, 2);
     // name board
-    T.draw(g, 'PRIDE of AMERICA', sx + 190, top + 44, { size: 12, align: 'center', color: '#1b4a8a', shadow: false });
+    T.draw(g, 'PRIDE of AMERICA', sx + 190, top + 36, { size: 12, align: 'center', color: '#1b4a8a', shadow: false });
     g.strokeStyle = '#1b4a8a'; g.lineWidth = 1.2;
-    g.beginPath(); g.moveTo(sx + 60, top + 62); g.bezierCurveTo(sx + 140, top + 56, sx + 240, top + 68, sx + 320, top + 60); g.stroke();
-    T.draw(g, 'SAIL HAWAII   LIVE FULLY', sx + 190, top + 68, { size: 6, align: 'center', color: '#2a6ab0', shadow: false });
+    g.beginPath(); g.moveTo(sx + 60, top + 52); g.bezierCurveTo(sx + 140, top + 46, sx + 240, top + 58, sx + 320, top + 50); g.stroke();
+    T.draw(g, 'SAIL HAWAII   LIVE FULLY', sx + 190, top + 56, { size: 6, align: 'center', color: '#2a6ab0', shadow: false });
     // stylised hibiscus emblem
-    g.save(); g.translate(sx + 34, top + 55);
+    g.save(); g.translate(sx + 34, top + 46);
     for (let i = 0; i < 5; i++) { g.rotate(Math.PI * 0.4); g.fillStyle = '#e84a6a'; g.beginPath(); g.ellipse(0, -5, 3.4, 5, 0, 0, 7); g.fill(); }
     g.fillStyle = '#ffd24a'; g.beginPath(); g.arc(0, 0, 1.6, 0, 7); g.fill();
     g.restore();
@@ -446,9 +446,10 @@
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, HOR + 2);
     // sun, high and to the right: key light for the whole deck
     const sunX = 566 - camX * 0.02, sunY = 22;
-    const sg = ctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, 120);
-    sg.addColorStop(0, 'rgba(255,255,240,1)'); sg.addColorStop(0.12, 'rgba(255,250,215,0.95)'); sg.addColorStop(0.3, 'rgba(255,240,190,0.35)'); sg.addColorStop(1, 'rgba(255,240,190,0)');
-    ctx.fillStyle = sg; ctx.fillRect(sunX - 120, 0, 240, 150);
+    // Sun disc and bloom, confined to the sky band so it costs sky pixels only.
+    const sg = ctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, 260);
+    sg.addColorStop(0, 'rgba(255,255,240,1)'); sg.addColorStop(0.06, 'rgba(255,250,215,0.95)'); sg.addColorStop(0.15, 'rgba(255,240,190,0.4)'); sg.addColorStop(0.45, 'rgba(255,236,190,0.14)'); sg.addColorStop(1, 'rgba(255,236,190,0)');
+    ctx.fillStyle = sg; ctx.fillRect(sunX - 260, 0, 520, HOR + 2);
     // cumulus
     const cl = [[40, 16, 0, 0.03], [250, 4, 2, 0.035], [480, 48, 1, 0.04], [700, 20, 0, 0.03]];
     for (const [cx, cy, k, sp] of cl) {
@@ -457,7 +458,7 @@
       G.blit(ctx, e, x, cy);
     }
     // Diamond Head + skyline
-    const far = G.layer('lido-far', 1280, 72, 2, (g, w) => { g.translate(0, -60); paintFar(g, w); });
+    const far = G.layer('lido-far', 1280, 72, 4, (g, w) => { g.translate(0, -60); paintFar(g, w); }, 0.45);
     G.tile(ctx, far, camX * 0.08 + 20, 60);
     // ocean
     const og = ctx.createLinearGradient(0, HOR, 0, 186);
@@ -487,10 +488,10 @@
       G.blit(ctx, e, bx, HOR - e.h + 5 + i * 5);
     }
     // superstructure + rail + palms (0.3)
-    const rail = G.layer('lido-rail', 1280, 150, 2.5, (g, w) => { g.translate(0, -34); paintRail(g, w); });
+    const rail = G.layer('lido-rail', 1280, 150, 4, (g, w) => { g.translate(0, -34); paintRail(g, w); });
     G.tile(ctx, rail, camX * 0.3 + 30, 34);
     // pool deck (0.5)
-    const pool = G.layer('lido-pool', 960, 70, 2, (g, w) => { g.translate(0, -116); paintPool(g, w); });
+    const pool = G.layer('lido-pool', 960, 70, 4, (g, w) => { g.translate(0, -116); paintPool(g, w); }, 0.3);
     G.tile(ctx, pool, camX * 0.5, 116);
     if (rich) {
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
@@ -503,7 +504,7 @@
       }
     }
     // buffet stations (0.7)
-    const buf = G.layer('lido-buffet', BUFFET_TILE, 110, 3, (g, w) => { g.translate(0, -78); paintBuffet(g, w); });
+    const buf = G.layer('lido-buffet', BUFFET_TILE, 110, 4, (g, w) => { g.translate(0, -78); paintBuffet(g, w); });
     G.tile(ctx, buf, camX * 0.7, 78);
     // heat-lamp glow and steam on the chafing dishes
     const bo = -wrapX(camX * 0.7, BUFFET_TILE);
@@ -560,6 +561,25 @@
       D.shadow(ctx, x + 20, WALL_BASE + 16, 22, 4, 0);
       G.blit(ctx, cs, x, WALL_BASE - 44 + 1 + 16);
     }
+  }
+
+  /* Lacquered-floor pass for the indoor decks: a reflection band of the wall
+     color at the far edge and additive light pools under the fixtures. */
+  function floorGloss(ctx, camX, sky, pool, period, rate, offset) {
+    const refl = ctx.createLinearGradient(0, WALL_BASE, 0, WALL_BASE + 64);
+    refl.addColorStop(0, sky); refl.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = refl; ctx.fillRect(0, WALL_BASE, W, 64);
+    if (WL.perf.lite) return;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const x0 = -wrapX(camX * rate + (offset || 0), period);
+    for (let x = x0; x < W + period; x += period) {
+      ctx.save(); ctx.translate(x, 262); ctx.scale(1, 0.34);
+      const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 110);
+      g.addColorStop(0, pool); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(-110, -110, 220, 220);
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   function plantBg(ctx, camX, t) {
@@ -694,6 +714,7 @@
       ctx.beginPath(); ctx.moveTo(x, WALL_BASE); ctx.lineTo(x + 8, WALL_BASE); ctx.lineTo(x + 3, WALL_BASE + 5); ctx.lineTo(x - 5, WALL_BASE + 5); ctx.closePath(); ctx.fill();
     }
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(0, WALL_BASE + 5, W, 6);
+    floorGloss(ctx, camX, 'rgba(120,150,190,0.18)', 'rgba(255,214,120,0.2)', 240, 0.72, 0);
   }
 
   function spaBg(ctx, camX, t) {
@@ -830,6 +851,7 @@
       }
     }
     ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.fillRect(0, WALL_BASE, W, 5);
+    floorGloss(ctx, camX, 'rgba(210,255,245,0.3)', 'rgba(220,255,240,0.16)', 180, 0.22, -90);
   }
 
   function freezerBg(ctx, camX, t) {
@@ -948,6 +970,7 @@
       ctx.fillRect(fx, WALL_BASE + 8 + (i * 31) % (H - WALL_BASE - 12), 3, 2);
     }
     ctx.fillStyle = 'rgba(0,0,0,0.24)'; ctx.fillRect(0, WALL_BASE, W, 6);
+    floorGloss(ctx, camX, 'rgba(190,230,255,0.3)', 'rgba(170,220,255,0.18)', 192, 0.5, -48);
   }
 
   /* ---------------- helpers for wave data ---------------- */

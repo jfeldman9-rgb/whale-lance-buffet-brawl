@@ -1209,6 +1209,7 @@ WL.sprites = (function () {
 
   /* ================= PICKUPS ================= */
   function drawPickup(ctx, x, y, kind, t) {
+    drawGlow(ctx, x, y - 14 + Math.sin(t * 4) * 2, 18, 0.22 + 0.08 * Math.sin(t * 5));
     ctx.save(); ctx.translate(x, y - 6 + Math.sin(t * 4) * 2);
     outlineStyle(ctx, 2);
     switch (kind) {
@@ -1259,36 +1260,42 @@ WL.sprites = (function () {
   function drawObject(ctx, x, y, kind, hp, t) {
     ctx.save(); ctx.translate(x, y);
     outlineStyle(ctx, 2);
+    LS = WL.light.side;
     const dmg = hp <= 1;
+    const hi = rich();
     switch (kind) {
       case 'cart': // buffet cart with chafing dishes
-        D.fillRRect(ctx, -26, -34, 52, 30, 3, '#d0d4dc', OUT);
+        D.fillRRect(ctx, -26, -34, 52, 30, 3, hi ? chrome(ctx, -34, -4) : '#d0d4dc', OUT);
         ctx.fillStyle = '#8a8f9a'; ctx.fillRect(-26, -22, 52, 3);
         D.circle(ctx, -18, -2, 4, '#333', OUT); D.circle(ctx, 18, -2, 4, '#333', OUT);
         D.ellipse(ctx, -12, -36, 10, 4, '#e8eaf0', OUT); D.ellipse(ctx, 12, -36, 10, 4, '#e8eaf0', OUT);
-        ctx.beginPath(); ctx.ellipse(-12, -40, 8, 5, 0, Math.PI, 0); ctx.fillStyle = '#b8bcc8'; ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.ellipse(12, -40, 8, 5, 0, Math.PI, 0); ctx.fillStyle = '#b8bcc8'; ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(-12, -40, 8, 5, 0, Math.PI, 0); ctx.fillStyle = hi ? chrome(ctx, -45, -40) : '#b8bcc8'; ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(12, -40, 8, 5, 0, Math.PI, 0); ctx.fillStyle = hi ? chrome(ctx, -45, -40) : '#b8bcc8'; ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#c8322a'; ctx.fillRect(-24, -32, 48, 8);
         WL.text.draw(ctx, 'BUFFET', 0, -31, { size: 5, align: 'center', color: '#fff', shadow: false });
         break;
       case 'crate':
-        D.fillRRect(ctx, -18, -34, 36, 34, 2, '#b07a3a', OUT);
+        D.fillRRect(ctx, -18, -34, 36, 34, 2, hi ? enamel(ctx, -34, 0, '#b07a3a') : '#b07a3a', OUT);
+        if (hi) volume(ctx, 0, 18, 0.8);
         ctx.strokeStyle = '#6a4218'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-18, -34); ctx.lineTo(18, 0); ctx.moveTo(18, -34); ctx.lineTo(-18, 0); ctx.stroke();
         ctx.strokeStyle = OUT; ctx.strokeRect(-18, -34, 36, 34);
         WL.text.draw(ctx, 'NCL', 0, -20, { size: 5, align: 'center', color: '#3a2a10', shadow: false });
         break;
       case 'cooler':
-        D.fillRRect(ctx, -20, -28, 40, 28, 3, '#3a78c8', OUT);
-        D.fillRRect(ctx, -21, -32, 42, 8, 3, '#f0f0f0', OUT);
+        D.fillRRect(ctx, -20, -28, 40, 28, 3, hi ? enamel(ctx, -28, 0, '#3a78c8') : '#3a78c8', OUT);
+        if (hi) volume(ctx, 0, 20, 0.8);
+        D.fillRRect(ctx, -21, -32, 42, 8, 3, hi ? enamel(ctx, -32, -24, '#f0f0f0') : '#f0f0f0', OUT);
         ctx.fillStyle = '#204a88'; ctx.fillRect(-16, -20, 32, 3);
         break;
       case 'barrel':
         D.fillRRect(ctx, -14, -38, 28, 38, 5, '#4a8a3a', OUT);
+        if (hi) volume(ctx, 0, 14, 1.1);
         ctx.fillStyle = '#2a5a20'; ctx.fillRect(-14, -30, 28, 3); ctx.fillRect(-14, -12, 28, 3);
         WL.text.draw(ctx, 'R-410A', 0, -24, { size: 4, align: 'center', color: '#dfffd0', shadow: false });
         break;
       case 'vending':
         D.fillRRect(ctx, -22, -70, 44, 70, 3, '#2a8a5a', OUT);
+        if (hi) volume(ctx, 0, 22, 0.9);
         D.fillRRect(ctx, -17, -64, 26, 40, 2, '#0a1a2a', OUT);
         for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { ctx.fillStyle = ['#d33', '#3d3', '#dd3'][(i + j) % 3]; ctx.fillRect(-14 + j * 8, -60 + i * 12, 6, 9); }
         D.fillRRect(ctx, 11, -64, 8, 40, 1, '#1a5a3a', OUT);
@@ -1318,7 +1325,7 @@ WL.sprites = (function () {
         D.fillRRect(ctx, -24, -20, 48, 14, 3, '#cdd3de', OUT);
         ctx.fillStyle = '#8f98a8'; ctx.fillRect(-24, -13, 48, 2);
         ctx.beginPath(); ctx.arc(0, -18, 18, Math.PI, 0); ctx.closePath();
-        ctx.fillStyle = '#e4e8f0'; ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = hi ? chrome(ctx, -36, -18) : '#e4e8f0'; ctx.fill(); if (hi) volume(ctx, 0, 18, 0.7); ctx.strokeStyle = OUT; ctx.lineWidth = 2; ctx.stroke();
         D.fillRRect(ctx, -6, -38, 12, 4, 1, '#d4af37', OUT);
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
         ctx.beginPath(); ctx.arc(0, -18, 14, Math.PI * 1.15, Math.PI * 1.5); ctx.stroke();

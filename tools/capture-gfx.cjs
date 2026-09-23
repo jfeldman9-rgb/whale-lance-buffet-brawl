@@ -93,7 +93,8 @@ frame(() => s.draw(ctx)); save('02-lido-midfight'); shots.push('02-lido-midfight
   const sky = avg(160, 60, 300, 20);
   check(sky[2] > 150 && lum(sky) > 120, 'lido sky is bright blue: ' + sky.map(v => v | 0));
   // No opaque full-width bar across the top: sky shows between HUD pieces.
-  const gap = avg(200, 44, 40, 6);
+  const gap = avg(238, 30, 6, 8);
+  check(lum(avg(432, 4, 14, 5)) > 70, 'sky shows between the logo and the tracker');
   check(lum(gap) > 70, 'top HUD is not an opaque plate: ' + lum(gap).toFixed(0));
   const deck = avg(0, 300, 640, 50);
   check(deck[0] > deck[2] + 25, 'deck reads as warm wood: ' + deck.map(v => v | 0));
@@ -122,6 +123,11 @@ frame(() => s.draw(ctx)); save('06-boss'); shots.push('06-boss');
 // Pause menu over the fight
 s = stageFight(0); s.paused = true; s.pauseSel = 4;
 frame(() => s.draw(ctx)); save('07-pause'); shots.push('07-pause');
+// Large HUD + colorblind-safe health, low HP
+WL.settings.set({ bigHud: true, colorblind: true });
+s = stageFight(0, { camX: 600 }); s.player.hp = 22; s.playerGhostHp = 40;
+frame(() => s.draw(ctx)); save('10-large-hud-colorblind'); shots.push('10-large-hud-colorblind');
+WL.settings.set({ bigHud: false, colorblind: false });
 // Classic 640x360
 WL.display.setMode('classic');
 assert.equal(canvas.width, 640); assert.equal(canvas.style.imageRendering, 'pixelated');

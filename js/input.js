@@ -415,11 +415,8 @@ WL.input = (function () {
     const w = Math.max(16, label.length * 7 + 8), h = 15;
     // Glossy keycap: a raised face over a darker skirt, highlight on the top edge.
     WL.draw.fillRRect(ctx, x - w / 2, y - h / 2 + 1.5, w, h, 3, down ? '#8a6a00' : 'rgba(2,4,12,0.9)');
-    const kg = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
-    if (down) { kg.addColorStop(0, '#fff3a0'); kg.addColorStop(1, '#ffc21a'); }
-    else { kg.addColorStop(0, 'rgba(70,84,120,0.95)'); kg.addColorStop(0.5, 'rgba(22,28,48,0.95)'); kg.addColorStop(1, 'rgba(10,14,28,0.95)'); }
-    WL.draw.fillRRect(ctx, x - w / 2, y - h / 2, w, h, 3, kg, down ? '#fff6c8' : 'rgba(255,255,255,0.85)');
-    ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillRect(x - w / 2 + 3, y - h / 2 + 1.2, w - 6, 1);
+    WL.draw.fillRRect(ctx, x - w / 2, y - h / 2, w, h, 3, down ? '#ffd23a' : 'rgba(18,24,44,0.95)', down ? '#fff6c8' : 'rgba(255,255,255,0.85)');
+    ctx.fillStyle = down ? 'rgba(255,255,255,0.5)' : 'rgba(120,140,190,0.45)'; ctx.fillRect(x - w / 2 + 2, y - h / 2 + 1, w - 4, h * 0.4);
     WL.text.draw(ctx, label, x, y - 5, {
       size: label.length > 2 ? 5 : 7, align: 'center',
       color: down ? '#1a1204' : '#fff', shadow: false
@@ -442,9 +439,7 @@ WL.input = (function () {
   }
 
   function drawStickGlyph(ctx, cx, cy, r, live) {
-    const sg = ctx.createRadialGradient(cx, cy - r * 0.4, 1, cx, cy, r);
-    sg.addColorStop(0, 'rgba(255,255,255,0.22)'); sg.addColorStop(1, 'rgba(255,255,255,0.06)');
-    WL.draw.circle(ctx, cx, cy, r, sg, 'rgba(255,255,255,0.88)');
+    WL.draw.circle(ctx, cx, cy, r, 'rgba(255,255,255,0.12)', 'rgba(255,255,255,0.88)');
     drawArrow(ctx, cx, cy - r + 1, 0);
     drawArrow(ctx, cx, cy + r - 1, Math.PI);
     drawArrow(ctx, cx - r + 1, cy, -Math.PI / 2);
@@ -532,10 +527,7 @@ WL.input = (function () {
         const armed = b.id === 'fart' && opts.fartReady;
         const col = armed ? '#88ff66' : b.color;
         // Glass button: tinted see-through core, colored rim, gloss on top.
-        const bg = ctx.createRadialGradient(b.x, b.y - b.r * 0.5, 1, b.x, b.y, b.r);
-        if (disabled) { bg.addColorStop(0, 'rgba(120,120,130,0.18)'); bg.addColorStop(1, 'rgba(40,40,50,0.14)'); }
-        else { bg.addColorStop(0, hexAlpha(col, down ? 0.7 : 0.32)); bg.addColorStop(0.75, hexAlpha(col, down ? 0.5 : 0.14)); bg.addColorStop(1, hexAlpha(col, down ? 0.6 : 0.26)); }
-        WL.draw.circle(ctx, b.x, b.y, b.r, bg, 'rgba(0,0,0,0.55)');
+        WL.draw.circle(ctx, b.x, b.y, b.r, disabled ? 'rgba(90,90,100,0.16)' : hexAlpha(col, down ? 0.55 : 0.2), 'rgba(0,0,0,0.55)');
         ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 1.5, 0, Math.PI * 2);
         ctx.strokeStyle = disabled ? 'rgba(200,200,210,0.45)' : (down ? '#ffffff' : hexAlpha(col, 0.95)); ctx.lineWidth = 2; ctx.stroke();
         ctx.beginPath(); ctx.ellipse(b.x, b.y - b.r * 0.45, b.r * 0.62, b.r * 0.3, 0, Math.PI, Math.PI * 2);
@@ -567,9 +559,7 @@ WL.input = (function () {
   }
 
   function glassPlate(ctx, x, y, w, h) {
-    const pg = ctx.createLinearGradient(0, y, 0, y + h);
-    pg.addColorStop(0, 'rgba(255,255,255,0.08)'); pg.addColorStop(0.5, 'rgba(8,12,30,0.06)'); pg.addColorStop(1, 'rgba(4,6,16,0.12)');
-    WL.draw.fillRRect(ctx, x, y, w, h, 9, pg, 'rgba(255,255,255,0.32)');
+    WL.draw.fillRRect(ctx, x, y, w, h, 9, 'rgba(8,12,30,0.08)', 'rgba(255,255,255,0.32)');
     ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(x + 8, y + 1, w - 16, 1);
   }
 

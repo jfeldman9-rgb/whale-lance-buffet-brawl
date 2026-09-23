@@ -212,7 +212,6 @@
         S.drawLance(ctx, 0, 0, { pose: 'victory', t, facing: -1 });
         ctx.restore();
       }
-      D.stageLighting(ctx, 1, 0, t);
       // Scrims: a glass menu plate at left, and a footer gradient under the legends.
       const foot = ctx.createLinearGradient(0, 300, 0, H);
       foot.addColorStop(0, 'rgba(4,10,30,0)'); foot.addColorStop(0.4, 'rgba(4,10,30,0.62)'); foot.addColorStop(1, 'rgba(4,10,30,0.82)');
@@ -1254,40 +1253,38 @@
       const s = big ? 1.25 : 1;
       const hb = Math.round(44 * s);
       this.hudBottom = hb;
-      // No full-width plate: a soft scrim that fades into the sky keeps text legible.
-      const scrim = ctx.createLinearGradient(0, 0, 0, hb + 14);
-      scrim.addColorStop(0, 'rgba(4,10,30,0.5)'); scrim.addColorStop(0.55, 'rgba(4,10,30,0.2)'); scrim.addColorStop(1, 'rgba(4,10,30,0)');
-      ctx.fillStyle = scrim; ctx.fillRect(0, 0, W, hb + 14);
-
+      // No full-width bar: the sky shows between the HUD pieces. A light
+      // backing sits behind Lance's cluster only, for legibility on white hulls.
       ctx.save();
       ctx.scale(s, s);
+      D.fillRRect(ctx, 2, 1, 232, 40, 12, 'rgba(6,12,32,0.34)');
       // circular portrait with a gold bezel; it flushes red when Lance is low
       const hpPct = p.hp / p.maxHp;
       const hud = WL.assets.get('lanceHud');
       if (hud) { ctx.save(); ctx.beginPath(); ctx.arc(22, 22, 18, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(hud, 4, 4, 36, 36); ctx.restore(); }
       else drawHudPortrait(ctx, 22, 22, hpPct < 0.3 ? 'hurt' : (p.state === 'attack' ? 'fight' : 'neutral'));
       drawBezel(ctx, 22, 22, 18, hpPct <= 0.25 && Math.floor(this.t * 4) % 2 === 0);
-      T.draw(ctx, 'LANCE', 45, 3, { size: 8, color: '#ffe14a', stroke: '#1a0e00', strokeWidth: 3 });
-      T.draw(ctx, 'A/C', 91, 5, { size: 5, color: '#e7c6ff', stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, 'LANCE', 45, 3, { size: 8, color: '#ffe14a', stroke: '#1a0e00', strokeWidth: 3 });
+      T.cached(ctx, 'A/C', 91, 5, { size: 5, color: '#e7c6ff', stroke: '#000', strokeWidth: 2 });
       // long HP bar
       const barW = 154;
       D.arcadeBar(ctx, 45, 14, barW, 9, hpPct, this.playerGhostHp / p.maxHp, hpColor(hpPct), cb ? '#ffffff' : '#ff9922', '#22080a');
       // Low health is marked by stripes as well as color.
       if (hpPct <= 0.25 && hpPct > 0) D.hatch(ctx, 45, 14, Math.max(1, Math.round(barW * hpPct)), 9);
-      if (cb || big) T.draw(ctx, `HP ${Math.ceil(p.hp)}`, 45 + barW - 2, 15, { size: 6, align: 'right', color: '#fff', stroke: '#000', strokeWidth: 2, shadow: false });
+      if (cb || big) T.cached(ctx, `HP ${Math.ceil(p.hp)}`, 45 + barW - 2, 15, { size: 6, align: 'right', color: '#fff', stroke: '#000', strokeWidth: 2, shadow: false });
       // spare lives as hard hats
       const spare = Math.max(0, p.lives - 1);
       for (let i = 0; i < spare; i++) hardHat(ctx, 51 + i * 13, 32);
-      T.draw(ctx, `x${spare}`, 46 + Math.max(1, spare) * 13 + 2, 28, { size: 6, color: '#fff', stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, `x${spare}`, 46 + Math.max(1, spare) * 13 + 2, 28, { size: 6, color: '#fff', stroke: '#000', strokeWidth: 2 });
       // Volcano Fart meter
       const full = p.fart >= p.fartMax;
       const pulse = full ? 0.6 + Math.sin(this.t * 10) * 0.4 : 1;
       const fx0 = 100, fw = 99;
       D.arcadeBar(ctx, fx0, 28, fw, 7, p.fart / p.fartMax, p.fart / p.fartMax, full ? `rgba(170,255,90,${pulse})` : '#7ad83a', null, '#0e2408');
-      T.draw(ctx, 'VOLCANO FART', fx0 + 3, 29, { size: 4, color: full ? '#15300a' : '#eaffd0', stroke: full ? null : '#0a1a04', strokeWidth: 2, shadow: false });
+      T.cached(ctx, 'VOLCANO FART', fx0 + 3, 29, { size: 4, color: full ? '#15300a' : '#eaffd0', stroke: full ? null : '#0a1a04', strokeWidth: 2, shadow: false });
       if (full && Math.floor(this.t * 6) % 2 === 0) {
         D.fillRRect(ctx, fx0 + fw + 5, 27, 26, 9, 3, '#ffe14a', '#12300a');
-        T.draw(ctx, 'MAX', fx0 + fw + 18, 28, { size: 6, align: 'center', color: '#111', shadow: false });
+        T.cached(ctx, 'MAX', fx0 + fw + 18, 28, { size: 6, align: 'center', color: '#111', shadow: false });
       }
       // toolbox indicator
       if (p.hasToolbox) { S.drawGlow(ctx, 216, 17, 12, 0.35); S.tool(ctx, 'toolbox', 216, 18, 0); }
@@ -1300,7 +1297,7 @@
       const stageLine = `STAGE ${L.id} • WAVE ${currentWaveNum}/${totalWaves}`;
       if (!big) {
         drawLogo(ctx, W / 2, 1, 0.38);
-        T.draw(ctx, stageLine, W / 2, 35, { size: 5, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+        T.cached(ctx, stageLine, W / 2, 35, { size: 5, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
         D.arcadeBar(ctx, W / 2 - 50, 42, 100, 2, prog, prog, '#ffe14a', null, '#1a1a24');
       }
 
@@ -1318,23 +1315,23 @@
       S.tool(ctx, 'wrench', bgx - 7, bgy + 5, -0.8);
       const temp = L.temp != null ? L.temp : 72;
       const hot = temp >= 90 ? '#ff6a3a' : temp >= 80 ? '#ffb020' : '#8fd4ff';
-      T.draw(ctx, L.boss ? 'LAST VALVE' : 'FIX THE A/C', px + 26, py + 5, { size: 7, color: '#ffffff', stroke: '#000', strokeWidth: 2 });
-      T.draw(ctx, `${temp}°F`, px + pw - 6, py + 5, { size: 6, align: 'right', color: hot, stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, L.boss ? 'LAST VALVE' : 'FIX THE A/C', px + 26, py + 5, { size: 7, color: '#ffffff', stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, `${temp}°F`, px + pw - 6, py + 5, { size: 6, align: 'right', color: hot, stroke: '#000', strokeWidth: 2 });
       const done = Math.min(this.waveIdx, totalWaves);
       for (let i = 0; i < totalWaves; i++) {
         const cx = px + 29 + i * 9, cyy = py + 18;
         D.fillRRect(ctx, cx - 3, cyy - 2.5, 7, 5, 1.5, i < done ? '#3cdb3c' : (i === done ? `rgba(255,225,74,${0.5 + 0.4 * Math.sin(this.t * 6)})` : 'rgba(255,255,255,0.14)'), 'rgba(0,0,0,0.6)');
       }
-      T.draw(ctx, L.boss && this.boss ? 'BEAT THE CONE' : `${done}/${totalWaves} ZONES`, px + 29 + totalWaves * 9 + 2, py + 15, { size: 5, color: '#9fe8ff', stroke: '#000', strokeWidth: 2 });
-      T.draw(ctx, 'SCORE', px + 26, py + 28, { size: 5, color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
-      T.draw(ctx, U.pad(p.score, 7), px + pw - 6, py + 25, { size: 9, align: 'right', color: '#fff', stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, L.boss && this.boss ? 'BEAT THE CONE' : `${done}/${totalWaves} ZONES`, px + 29 + totalWaves * 9 + 2, py + 15, { size: 5, color: '#9fe8ff', stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, 'SCORE', px + 26, py + 28, { size: 5, color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+      T.cached(ctx, U.pad(p.score, 7), px + pw - 6, py + 25, { size: 9, align: 'right', color: '#fff', stroke: '#000', strokeWidth: 2 });
       ctx.restore();
       // LARGE has no room between the scaled blocks (the pause button lives
       // there), so the stage line tucks under the tracker, clear of the boss bar.
       if (big) {
         const tw = T.width(ctx, stageLine, 7);
         D.fillRRect(ctx, W - 14 - Math.max(tw, 120), hb + 3, Math.max(tw, 120) + 8, 20, 3, 'rgba(8,10,22,0.6)', null);
-        T.draw(ctx, stageLine, W - 8, hb + 5, { size: 7, align: 'right', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
+        T.cached(ctx, stageLine, W - 8, hb + 5, { size: 7, align: 'right', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
         D.bar(ctx, W - 8 - 120, hb + 16, 120, 3, prog, '#ffe14a', '#333');
       }
       const dy = hb - 44;
@@ -1346,7 +1343,8 @@
         const rank = (WL.voice && WL.voice.comboRank(p.comboCount)) || '';
         const tool = p.lastToolT > 0 && WL.voice ? (p.lastTool === 'uppercut' ? 'WRENCH POP' : WL.voice.toolName(p.lastTool)) : '';
         ctx.save();
-        ctx.translate(W / 2 + 6, comboY);
+        // Center stage, like the concept; with a boss up it moves left, off the cone's face.
+        ctx.translate(this.boss ? 118 : W / 2 + 6, comboY);
         ctx.scale(pop, pop);
         drawCombo(ctx, p.comboCount, this.t);
         let ry = 34;
