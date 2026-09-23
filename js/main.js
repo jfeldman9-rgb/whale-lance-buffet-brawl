@@ -8,20 +8,20 @@
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  const SETTINGS_KEY = 'wl-settings';
+  // Everything persistent (display mode, volume, music, overlay opacity,
+  // remaps, accessibility) lives in WL.settings under the old key.
   function loadSettings() {
-    try {
-      const p = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-      if (p.mode === 'auto' || p.mode === 'sharp' || p.mode === 'classic') WL.display.mode = p.mode;
-      if (typeof p.volume === 'number') WL.audio.setVolume(p.volume);
-    } catch (e) { /* private mode */ }
+    const s = WL.settings.load();
+    WL.display.mode = s.mode;
+    WL.audio.setVolume(s.volume);
+    if (s.muted && s.volume > 0) WL.audio.setMuted(true);
+    WL.audio.setMusicLevel(s.music);
   }
   function saveSettings() {
-    try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mode: WL.display.mode, volume: WL.audio.volume }));
-    } catch (e) { /* private mode */ }
+    WL.settings.set({ mode: WL.display.mode, volume: WL.audio.volume, muted: WL.audio.muted, music: WL.audio.musicLevel });
   }
   loadSettings();
+  WL.perf.coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 
   function desktopLayout() {
     // Resolution must not change the input hints or camera lead.
@@ -62,7 +62,8 @@
       const L = WL.LEVELS[idx];
       const carry = { score: player.score, lives: player.lives, fart: player.fart };
       const temps = [94, 88, 81, 75, 72];
-      if (L.boss) { this.showEnding(player.score); return; }
+      if (L.boss) { WL.settings.clearRun(); this.showEnding(player.score); return; }
+      WL.settings.saveRun({ level: idx + 1, wave: 0, score: player.score, fart: Math.round(player.fart) });
       this.setScene(new WL.scenes.StoryBeat(this, {
         title: 'A/C REPAIR LOG', lines: L.outro.lines, tempFrom: temps[idx], tempTo: temps[idx + 1], palette: L.palette, pose: 'victory',
         onDone: () => this.startLevel(idx + 1, carry)
@@ -79,8 +80,20 @@
       WL.audio.playMusic('victory');
       next();
     },
-    gameOver(levelIndex, score) { this.setScene(new WL.scenes.GameOver(this, levelIndex, score)); },
-    continueGame(levelIndex, score) { this.startLevel(levelIndex, { score: Math.floor(score / 2), lives: 3, fart: 0 }); },
+    gameOver(levelIndex, score, wave) { this.setScene(new WL.scenes.GameOver(this, levelIndex, score, wave)); },
+    /** Continue after a wipe: same stage, from `wave` (0 = stage start). Half score, 3 lives. */
+    continueGame(levelIndex, score, wave) {
+      this.resumeAt(levelIndex, wave | 0, { score: Math.floor(score / 2), lives: 3, fart: 0 });
+    },
+    resumeAt(levelIndex, wave, carry) {
+      this.setScene(new WL.scenes.Play(this, levelIndex, Object.assign({}, carry, { resumeWave: wave })));
+    },
+    /** Title-screen Continue from the saved checkpoint. */
+    continueRun(run) {
+      if (!run) { this.startNewGame(true); return; }
+      if (run.wave === 0) this.startLevel(run.level, { score: run.score, lives: 3, fart: run.fart });
+      else this.resumeAt(run.level, run.wave, { score: run.score, lives: 3, fart: run.fart });
+    },
     /* debug helpers (used by automated tests / cheats) */
     debug: {
       level(n) { game.startLevel(n, { score: 0, lives: 3, fart: 0 }); },
@@ -148,10 +161,10 @@
     saveSettings();
     resize();
   };
-  WL.display.cycleMode = function () {
+  WL.display.cycleMode = function (dir) {
     const order = ['auto', 'sharp', 'classic'];
     const i = order.indexOf(this.mode);
-    this.setMode(order[(i + 1) % order.length]);
+    this.setMode(order[(i + (dir < 0 ? -1 : 1) + order.length) % order.length]);
     return this.mode;
   };
   WL.display.toggleFullscreen = function () {
@@ -222,11 +235,19 @@
 
   /* ---- loop ---- */
   let last = performance.now();
-  let fpsT = 0, frames = 0, fps = 0;
+  let fpsT = 0, frames = 0, fps = 0, slowSeconds = 0;
   function frame(now) {
     let dt = (now - last) / 1000; last = now;
     if (dt > 0.1) dt = 0.1; // tab switch protection
-    frames++; fpsT += dt; if (fpsT >= 1) { fps = frames; frames = 0; fpsT = 0; }
+    frames++; fpsT += dt;
+    if (fpsT >= 1) {
+      fps = frames; frames = 0; fpsT = 0;
+      // Three slow seconds in a live fight and AUTO effects drop to LITE.
+      const s = game.scene;
+      const fighting = s instanceof WL.scenes.Play && s.phase === 'play' && !s.paused && !document.hidden;
+      slowSeconds = fighting && fps < 48 ? slowSeconds + 1 : 0;
+      if (slowSeconds >= 3 && !WL.perf.runtimeLite) WL.perf.runtimeLite = true;
+    }
     WL.input.beginFrame();
     if (WL.input.pressed.fullscreen) WL.display.toggleFullscreen();
     if (WL.input.pressed.mute && !(game.scene && game.scene.paused)) {
