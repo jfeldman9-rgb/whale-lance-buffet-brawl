@@ -312,7 +312,7 @@
           const hitX = e.x - this.facing * 6;
           const hitY = e.y - e.height * 0.55 - e.z;
           this.g.fx.spark(hitX, hitY, box.knockdown);
-          this.g.fx.foodDebris(hitX, hitY, e.type);
+          this.g.fx.foodDebris(hitX, hitY, e.type, e.y);
           this.g.fx.impactRing(hitX, hitY, box.knockdown);
           if (this.g.triggerHitFlash) this.g.triggerHitFlash(box.knockdown ? 0.05 : 0.03);
           n++;
@@ -805,7 +805,7 @@
         else if (this.elite) this.g.bark('elite');
       }
       WL.audio.sfx.enemyDie();
-      this.g.fx.burst(this.x, this.y - this.height / 2, this.type);
+      this.g.fx.burst(this.x, this.y - this.height / 2, this.type, this.y);
       // drops
       if (U.chance(this.dropChance) || this.forceDrop) {
         const kind = this.forceDrop || U.pick(['beans', 'beans', 'chili', 'leftovers', 'leftovers', 'burger', 'chip', 'coffee']);
@@ -847,9 +847,15 @@
     draw(ctx, camX) {
       const sx = Math.round(this.x - camX), sy = Math.round(this.y);
       const plate = this.def.plate || '#888';
+      // Type marker on the deck: a lit ring rather than an opaque disc.
       ctx.save();
-      ctx.globalAlpha = this.elite ? 0.9 : 0.72;
-      WL.draw.ellipse(ctx, sx, sy + 1, Math.max(12, this.height * 0.24), 5.5, plate, this.elite ? '#ffe14a' : '#141428');
+      const prx = Math.max(12, this.height * 0.24);
+      ctx.globalAlpha = this.elite ? 0.5 : 0.28;
+      WL.draw.ellipse(ctx, sx, sy + 1, prx, 5.5, plate);
+      ctx.globalAlpha = this.elite ? 1 : 0.85;
+      ctx.lineWidth = this.elite ? 2 : 1.5;
+      ctx.strokeStyle = this.elite ? '#ffe14a' : plate;
+      ctx.beginPath(); ctx.ellipse(sx, sy + 1, prx, 5.5, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
       WL.draw.shadow(ctx, sx, sy, this.height * 0.28, this.height * 0.09, this.z);
       const alpha = this.dead ? Math.max(0, 1 - (this.stateT - 0.4) * 2) : (this.state === 'spawn' ? this.stateT * 2 : 1);
@@ -903,7 +909,7 @@
       }
       if (this.dead) {
         this.melt = Math.min(1, this.stateT / 3);
-        if (Math.random() < 0.3) this.g.fx.burst(this.x + U.rand(-50, 50), this.y - U.rand(20, 140), 'froyo');
+        if (Math.random() < 0.3) this.g.fx.burst(this.x + U.rand(-50, 50), this.y - U.rand(20, 140), 'froyo', this.y + U.rand(-10, 10));
         if (this.stateT > 3.2) { this.remove = true; this.g.bossDefeated(); }
         return;
       }
@@ -1115,7 +1121,7 @@
         else if (this.kind === 'tray') WL.audio.sfx.clatter();
         else WL.audio.sfx.break();
         g.shake(2.5, 0.12);
-        g.fx.debris(this.x, this.y - 18, this.kind);
+        g.fx.debris(this.x, this.y - 18, this.kind, this.y + 2);
         this.contents.forEach((c, i) => setTimeout(() => g.spawnPickup(c, this.x + (i - (this.contents.length - 1) / 2) * 24, this.y, true), i * 60));
         g.player.addScore(50);
       }
