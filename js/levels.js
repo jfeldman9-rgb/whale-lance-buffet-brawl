@@ -486,6 +486,23 @@
       g.drawImage(img, 0, 0, w, h);
     }, dir < 0 ? '-m' : '');
   }
+  /* Each mid plate paints its own strip of deck; the lacquer mirrors what stands on it. */
+  const MID_REFL_H = 44, MID_REFL_SQUASH = 0.62;
+  const MID_FOOT = { 'lido-mid-ship': 0.87, 'lido-mid-pool': 0.88, 'lido-mid-deck': 0.9 };
+  function midReflection(name, dir) {
+    const P = WL.ARTDATA.plates[name], mh = MID_W * P.h / P.w, edge = mh * (MID_FOOT[name] || 0.9);
+    return WL.art.plateLayer(name, MID_W, MID_REFL_H, 1.5, 1.2, (g, img, w, h) => {
+      g.save();
+      g.translate(dir < 0 ? w : 0, edge * MID_REFL_SQUASH);
+      g.scale(dir < 0 ? -1 : 1, -MID_REFL_SQUASH);
+      g.drawImage(img, 0, 0, w, mh);
+      g.restore();
+      g.globalCompositeOperation = 'destination-in';
+      const fade = g.createLinearGradient(0, 0, 0, h);
+      fade.addColorStop(0, 'rgba(0,0,0,0.85)'); fade.addColorStop(0.35, 'rgba(0,0,0,0.4)'); fade.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = fade; g.fillRect(0, 0, w, h);
+    }, '-refl' + (dir < 0 ? 'm' : ''));
+  }
   function buffetLayers() {
     const P = WL.ARTDATA.plates['lido-buffet'];
     if (!P || !WL.art.plate('lido-buffet')) return null;
@@ -536,6 +553,16 @@
     // polished teak
     const floor = WL.art.plateLayer('lido-floor', 560, H - WALL_BASE, 3, 0);
     G.tile(ctx, floor, camX, WALL_BASE);
+    if (rich) {
+      ctx.save(); ctx.globalAlpha = 0.55;
+      MID_SEQ.forEach(([name, dir], i) => {
+        const x = mx + i * (MID_W - MID_OVER);
+        if (x > W || x + MID_W < 0) return;
+        const e = midReflection(name, dir);
+        if (e) G.blit(ctx, e, x, WALL_BASE);
+      });
+      ctx.restore();
+    }
     // far edge: the deck line and the sky's bounce in the lacquer
     const ao = ctx.createLinearGradient(0, WALL_BASE, 0, WALL_BASE + 12);
     ao.addColorStop(0, 'rgba(50,24,6,0.5)'); ao.addColorStop(1, 'rgba(50,24,6,0)');

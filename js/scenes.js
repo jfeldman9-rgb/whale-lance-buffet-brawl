@@ -1456,10 +1456,11 @@
       const totalWaves = L.waves ? L.waves.length : 1;
       const currentWaveNum = Math.min(this.waveIdx + 1, totalWaves);
       const stageLine = `STAGE ${L.id} • WAVE ${currentWaveNum}/${totalWaves}`;
-      let logoH = 33;
+      let logoH = 33, hudFloor = 0;
       if (!big) {
-        logoH = drawLogo(ctx, W / 2, 1, WL.art.plate('logo') ? 150 : 144);
-        const ly = Math.max(35, logoH + 1);
+        logoH = drawLogo(ctx, W / 2, 1, WL.art.plate('logo') ? (this.boss ? 118 : 150) : 144);
+        const ly = Math.max(this.boss ? 28 : 35, logoH + 1);
+        hudFloor = ly + 10;
         T.cached(ctx, stageLine, W / 2, ly, { size: 5, align: 'center', color: '#ffe14a', stroke: '#000', strokeWidth: 2 });
         D.arcadeBar(ctx, W / 2 - 50, ly + 7, 100, 2, prog, prog, '#ffe14a', null, '#1a1a24');
       }
@@ -1536,7 +1537,7 @@
       // boss bar sits under the HUD so thumbs keep the bottom of the screen
       if (this.boss && !this.boss.remove) {
         const b = this.boss;
-        const bw = 268, bx = W / 2 - bw / 2, by = 58 + dy;
+        const bw = 268, bx = W / 2 - bw / 2, by = Math.max(58 + dy, hudFloor + 13);
         const phaseName = b.phase === 1 ? 'SWIRL' : b.phase === 2 ? 'TOPPINGS' : 'MELT';
         const phaseCol = b.phase === 1 ? '#bfefff' : b.phase === 2 ? '#ffe14a' : '#ff6fa8';
         T.draw(ctx, 'GIANT FROYO CONE', W / 2, by - 10, { size: 6, align: 'center', color: '#f9c', stroke: '#000', strokeWidth: 3 });
